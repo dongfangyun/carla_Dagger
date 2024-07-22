@@ -1,0 +1,327 @@
+"""DQN Synchronous Train Torch version"""
+from threading import Thread
+import os
+import glob # 用于添加carla.egg。环境中装有.whl可忽略
+import sys
+import random
+import time
+from collections import deque # 双端队列
+
+import math
+import numpy as np
+import cv2
+import torch
+import torch.nn as nn
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm # 在Python长循环中添加一个进度提示信息，用户只需要封装任意的迭代器tqdm(iterator)
+
+try:
+    sys.path.append(glob.glob('../carla/dist/carla-*%d.%d-%s.egg' % (
+        sys.version_info.major,
+        sys.version_info.minor,
+        'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
+except IndexError:
+    pass
+import carla
+
+from continous_hd_CarEnv import CarEnv, IM_WIDTH, IM_HEIGHT,camera_queue1, camera_queue2 
+
+writer = SummaryWriter("./logs_play_hd_DDPG")
+log_dir = r"IL_experience_model\\model_Thu_Jul_18_15_31_21_2024.pth"
+
+SHOW_PREVIEW = False # 训练时播放摄像镜头
+LOG = False # 训练时向tensorboard中写入记录
+
+REPLAY_MEMORY_SIZE = 1000 # 经验回放池最大容量
+MIN_REPLAY_MEMORY_SIZE = 600# 抽样训练开始时经验回放池的最小样本数
+MINIBATCH_SIZE = 8 # 每次从经验回放池的采样数（作为训练的同一批次）   此大小影响运算速度/显存
+UPDATE_TARGET_EVERY = 5 # 同步target网络的训练次数
+EPISODES = 100 # 游戏进行总次数
+DISCOUNT = 0.99 # 贝尔曼公式中折扣因子γ
+
+
+"""
+    Policynet():
+    input: state([batch, 7,  height, width])
+    return: action([batch, 2])
+"""
+#去掉一层的网络（目前实验网络数量最少）
+# class Policynet(nn.Module):    
+#     def __init__(self, IM_HEIGHT, IM_WIDTH):
+#         super(Policynet, self).__init__() 
+#         self.conv1 = nn.Sequential(
+#             # nn.BatchNorm2d(7),
+#             nn.Conv2d(7, 32, kernel_size=5, stride=1, padding=2),
+#             nn.ReLU(),
+#             nn.MaxPool2d(2),
+#         )
+#         self.conv2 = nn.Sequential(
+#             # nn.BatchNorm2d(32),
+#             nn.Conv2d(32, 32, kernel_size=5, stride=1, padding=2),
+#             nn.ReLU(),
+#             nn.MaxPool2d(2),
+#         )
+#         self.conv3 = nn.Sequential(
+#             # nn.BatchNorm2d(32),
+#             nn.Conv2d(32, 64, kernel_size=5, stride=1, padding=2),
+#             nn.ReLU(),
+#             nn.MaxPool2d(2),
+#             # nn.BatchNorm2d(64),
+#         )
+#         self.dense = nn.Sequential(
+#             nn.Linear(int(64 * (IM_HEIGHT/4) * (IM_WIDTH/4)), 64),
+#             nn.ReLU(),
+#             nn.Dropout(0.5),
+#             nn.Linear(64, 2), # action(batch, 2)
+#             nn.Tanh()
+#         )
+
+#     def forward(self, x):
+#         # conv1_out = self.conv1(x) 
+#         conv2_out = self.conv1(x) 
+#         # conv2_out = self.conv2(conv1_out)
+#         conv3_out = self.conv3(conv2_out)
+#         res = conv3_out.reshape(conv3_out.size(0), -1)
+#         out = self.dense(res)
+#         # print(out)
+#         return out # (batch, 2)
+
+#标准网络结构
+class Policynet(nn.Module):
+    def __init__(self, IM_HEIGHT, IM_WIDTH):
+        super(Policynet, self).__init__() 
+        self.conv1 = nn.Sequential(
+            # nn.BatchNorm2d(7),
+            nn.Conv2d(7, 32, kernel_size=5, stride=1, padding=2),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+        )
+        self.conv2 = nn.Sequential(
+            # nn.BatchNorm2d(32),
+            nn.Conv2d(32, 32, kernel_size=5, stride=1, padding=2),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+        )
+        self.conv3 = nn.Sequential(
+            # nn.BatchNorm2d(32),
+            nn.Conv2d(32, 64, kernel_size=5, stride=1, padding=2),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            # nn.BatchNorm2d(64),
+        )
+        self.dense = nn.Sequential(
+            nn.Linear(int(64 * (IM_HEIGHT/8) * (IM_WIDTH/8)), 64),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(64, 2), # action(batch, 2)
+            nn.Tanh()
+        )
+
+    def forward(self, x):
+        conv1_out = self.conv1(x) 
+        # conv2_out = self.conv1(x) 
+        conv2_out = self.conv2(conv1_out)
+        conv3_out = self.conv3(conv2_out)
+        res = conv3_out.reshape(conv3_out.size(0), -1)
+        out = self.dense(res)
+        # print(out)
+        return out # (batch, 2)
+    
+
+"""
+    QValueNet():
+    input: state([batch, 7,  height, width]), action([batch, 2])
+    return: QValue(1)
+"""
+
+if torch.cuda.device_count() > 1:
+    device = torch.device("cuda:1") 
+else:
+    device = torch.device("cuda:0")
+
+class DDPG:
+    def __init__(self,lr_actor=1e-2):
+
+        self.actor = Policynet(IM_HEIGHT, IM_WIDTH).to("cuda:0")    
+
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=lr_actor) 
+
+        if os.path.exists(log_dir): # 模仿学习模型
+            checkpoint = torch.load(log_dir)
+            self.actor.load_state_dict(checkpoint['model'])
+            self.actor_optimizer.load_state_dict(checkpoint['optimizer'])
+            start_epoch = checkpoint['epoch']
+            print('加载 epoch {} 成功！'.format(start_epoch))    
+
+        # if os.path.exists(log_dir): # 强化学习模型
+        #     self.actor = torch.load(log_dir)
+
+        self.sigma = 0.1 #高斯噪声标准差
+
+        self.terminate = False #没结束循环训练，当全部游戏次数跑完后此处会改为True，停止进程中的采样训练
+        self.training_initialized = False
+
+    def get_action(self, state): # state(16,c,h,w)
+        self.actor.eval() #改完合理，但还是不行
+        with torch.no_grad():
+            state = torch.tensor(state, dtype=torch.float).to(device) # (hwc)
+            state = state/255 
+            state = state.permute(2, 0, 1) # (chw)
+            state = state.unsqueeze(dim=0) # (n, c, h, w) 
+
+            action = self.actor(state)# action(batch, 2)a
+            
+            #给动作添加噪声，增加探索
+            # action = action.clone() + torch.tensor(self.sigma * np.random.randn(2)).to(device) #self.action_dim = 2
+        self.actor.train() #########此处为何要train？？？？？？？？
+        return action # action(batch, 2)
+
+# def caculate_reward(done, new_kmh, new_dis, kmh, dis, action, env):
+#     reward = 0.0
+
+#     reward += np.clip(new_dis-dis, -10.0, 10.0) 
+#     # reward += (new_dis-dis)*1
+#     # reward +=(new_kmh - kmh)
+#     reward +=(kmh) * 0.05
+#     if len(env.collision_hist) != 0:
+#         reward += -10
+#     if kmh < 1:
+#         reward += -1
+#     if action[0][0] > 0:
+#         reward += 1
+
+#     return reward
+
+def caculate_reward(dist_to_start, dist_to_start_old, kmh_player, done, inva_lane, action):
+    reward = 0.0
+    reward += np.clip(dist_to_start-dist_to_start_old, -10.0, 10.0) 
+    # reward += (new_dis-dis)*1
+    # reward +=(new_kmh - kmh)
+    reward +=(kmh_player) * 0.05
+    if done: #撞击
+        reward += -10
+    if inva_lane: #跨道
+        print("invasion lane") 
+        reward += -10
+    if kmh_player < 1:
+        reward += -1
+    if action[0][0] > 0.2:
+        reward += 1
+    return reward
+
+if __name__ == '__main__':
+    # For more repetitive results
+    # random.seed(1)
+    # np.random.seed(1)
+
+    # Create agent and environment
+    env = CarEnv()    
+    agent = DDPG()
+
+    Original_settings = env.original_settings # 将原设置传出来保存
+    # sensor_queue1 = Queue()
+    
+    now = time.ctime(time.time())
+    now = now.replace(" ","_").replace(":", "_")
+
+    episode_num = 0 # 游戏进行的次数
+
+    all_average_reward = 0
+    # Iterate over episodes
+    for episode in tqdm(range(1, EPISODES + 1), ascii=True, unit='episodes'): # 1~100 EPISODE
+        env.collision_hist = [] # 记录碰撞发生的列表
+        episode_reward = 0 # 每次游戏所有step累计奖励
+
+        # Reset environment and get initial state
+        env.reset() #此处reset里会先tick()一下，往队列里传入初始图像
+
+        current_state1 = camera_queue1.get() # <class 'carla.libcarla.Image'> Image(frame=154824, timestamp=1589.824231, size=640x480)
+        i_1 = np.array(current_state1.raw_data) #(1228800,) = 640 X 480 X 4   	.raw_data：Array of BGRA 32-bit pixels
+        i2_1 = i_1.reshape((IM_HEIGHT, IM_WIDTH, 4))
+        i3_1 = i2_1[:, :, :3] # （h, w, 3）= (480, 640, 3)
+
+        current_state2 = camera_queue2.get() # <class 'carla.libcarla.Image'> Image(frame=154824, timestamp=1589.824231, size=640x480)
+        current_state2.convert(carla.ColorConverter.CityScapesPalette)
+        i_2 = np.array(current_state2.raw_data) #(1228800,) = 640 X 480 X 4
+        i2_2 = i_2.reshape((IM_HEIGHT, IM_WIDTH, 4))
+        i3_2 = i2_2[:, :, :3] # （h, w, 3）= (480, 640, 3)  # （h, w, 3）= (480, 640, 3)
+
+        action = torch.tensor([[0, 0]]).to(device)  # torch.Size([1, 2])
+        reward =0
+        done = False
+        kmh = 0
+        kmh_array = np.ones((IM_HEIGHT, IM_WIDTH, 1))*kmh # （h, w, 1）= (480, 640, 1)
+        dis_to_start_old = 0
+        current_state = np.concatenate((i3_1, i3_2, kmh_array), axis=2) # （h, w, 3）= (480, 640, 3+3+1 = 7)
+        #以上为初始帧的s,a,r,done,kmh,dis
+
+        episode_start = time.time()
+        episode_num += 1
+        episode_steps = 0
+
+        # Play for given number of seconds only
+        while True:
+            #synchronous
+            env.world.tick()
+
+            new_state1 = camera_queue1.get()
+            i_1 = np.array(new_state1.raw_data) # .raw_data：Array of BGRA 32-bit pixels
+            #print(i.shape)
+            i2_1 = i_1.reshape((IM_HEIGHT, IM_WIDTH, 4))
+            i3_1 = i2_1[:, :, :3] # （h, w, 3）= (480, 640, 3)
+            if SHOW_PREVIEW:
+                cv2.imshow("i3_1", i3_1)
+                cv2.waitKey(1)
+
+            new_state2 = camera_queue2.get()
+            new_state2.convert(carla.ColorConverter.CityScapesPalette)
+            i_2 = np.array(new_state2.raw_data) # .raw_data：Array of BGRA 32-bit pixels
+            #print(i.shape)
+            i2_2 = i_2.reshape((IM_HEIGHT, IM_WIDTH, 4))
+            i3_2 = i2_2[:, :, :3] # （h, w, 3）= (480, 640, 3)
+            if SHOW_PREVIEW:
+                cv2.imshow("i3_2", i3_2)
+                cv2.waitKey(1)
+
+            new_state = np.concatenate((i3_1, i3_2, kmh_array), axis=2) # （h, w, 3+3+1）= (480, 640, 7)
+
+            current_state = new_state.copy() #array直接复制会浅拷贝共用内存，此处需深拷贝保持二者独立性 (480, 640, 3)
+
+            action = agent.get_action(current_state)
+
+            # reward, done, _ = env.step(action)
+            done, new_kmh, dis_to_start, inva_lane= env.step(action, episode_steps)
+            # reward = caculate_reward(done, new_kmh, new_dis, kmh, dis, action, env)
+            reward = caculate_reward(dis_to_start, dis_to_start_old, kmh, done, inva_lane, action)
+            kmh = new_kmh
+            dis_to_start_old = dis_to_start
+
+            print(action, reward)
+
+            episode_reward += reward
+
+            # set the sectator to follow the ego vehicle
+            spectator = env.world.get_spectator()
+            transform = env.vehicle.get_transform()
+            spectator.set_transform(carla.Transform(transform.location + carla.Location(z=20),
+                                                carla.Rotation(pitch=-90)))
+            
+            episode_steps += 1
+
+            if done:
+                break
+
+        # End of episode - destroy agents
+        for actor in env.actor_list:
+            actor.destroy()
+
+        if LOG:
+            writer.add_scalar("avearge_reward_{}".format(now), episode_reward/episode_steps, episode_num)
+        
+        all_average_reward += episode_reward/episode_steps
+
+    print("all_average_reward", all_average_reward/EPISODES)
+
+    # Set termination flag for training thread and wait for it to finish
+    agent.terminate = True
+    env.world.apply_settings(Original_settings)
