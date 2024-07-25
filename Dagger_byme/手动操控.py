@@ -329,7 +329,8 @@ class World(object):
             self.player = self.world.try_spawn_actor(self.model_3, spawn_point)
 
 ################################################################获取初始位置
-        self.start_point = self.player.get_location()
+        self.start_point = spawn_point.location
+        # print(spawn_point.get_forward_vector())
 
         self.show_vehicle_telemetry = False
         self.modify_vehicle_physics(self.player) # 可以使用物理模拟设备控制
@@ -467,11 +468,13 @@ class KeyboardControl(object):
         self.step_reset = False # 默认不开启定时重置##############################
         self._ackermann_enabled = False
         self._ackermann_reverse = 1
+        self.destination = random.choice(world.spawn_points).location # 初始化后先随便给个目的地属性
+
         if isinstance(world.player, carla.Vehicle): # 操控是车的情况下
             self._control = carla.VehicleControl()
             self._ackermann_control = carla.VehicleAckermannControl()
             self._lights = carla.VehicleLightState.NONE
-            world.player.set_autopilot(self._autopilot_enabled)
+            # world.player.set_autopilot(self._autopilot_enabled)
             world.player.set_light_state(self._lights)
         elif isinstance(world.player, carla.Walker):
             self._control = carla.WalkerControl()
@@ -482,10 +485,10 @@ class KeyboardControl(object):
         self._steer_cache = 0.0
         world.hud.notification("Press 'H' or '?' for help.", seconds=4.0)
 
-        self.agent = BasicAgent(world.player, 30) 
+        self.agent = BasicAgent(world.player, 30) # 设置自动驾驶代理#########################################在此传出destination
         self.agent.follow_speed_limits(True)
-        destination = random.choice(world.spawn_points).location
-        self.agent.set_destination(destination)
+        self.destination = random.choice(world.spawn_points).location
+        self.agent.set_destination(self.destination)
 
     def keep_traffic_lights(self,world): # 重置后按照保留全绿灯（否则默认重置为正常）
         if world._all_green_traffic_lights: 
@@ -661,8 +664,8 @@ class KeyboardControl(object):
 
                         self.agent = BasicAgent(world.player, 30) 
                         self.agent.follow_speed_limits(True)
-                        destination = random.choice(world.spawn_points).location
-                        self.agent.set_destination(destination)
+                        self.destination = random.choice(world.spawn_points).location # 在此传出destination
+                        self.agent.set_destination(self.destination)
 
 ############################################################################################################世界定时重置
                     elif event.key == K_j and not pygame.key.get_mods() & KMOD_CTRL:
@@ -703,16 +706,16 @@ class KeyboardControl(object):
                     elif event.key == K_x:
                         current_lights ^= carla.VehicleLightState.RightBlinker
 
-        control_player = self._parse_vehicle_keys(pygame.key.get_pressed(), clock.get_time(), world) ############响应人工操作按键
+        self.control_player = self._parse_vehicle_keys(pygame.key.get_pressed(), clock.get_time(), world) ############响应人工操作按键
 
-        control_auto = self.agent.run_step()       
-        control_auto.manual_gear_shift = False
+        self.control_auto = self.agent.run_step()       
+        self.control_auto.manual_gear_shift = False
 
         #判断采用哪种操作
         if not self._autopilot_enabled: # 人工驾驶
-            self.control = control_player
+            self.control = self.control_player
         else: # 自动驾驶
-            self.control = control_auto
+            self.control = self.control_auto
 
         if isinstance(self.control, carla.VehicleControl):
             self.control.reverse = self.control.gear < 0
@@ -732,7 +735,7 @@ class KeyboardControl(object):
             # Apply control
             if not self._ackermann_enabled:
                 world.player.apply_control(self.control)
-                print(control_auto)
+                # print(control_auto)
 
         elif isinstance(self.control, carla.WalkerControl): # 行人控制
             self._parse_walker_keys(pygame.key.get_pressed(), clock.get_time(), world)
@@ -760,6 +763,13 @@ class KeyboardControl(object):
                 world.destroy()
                 world.restart()
             self.keep_traffic_lights(world) # 重置后交通灯模式与之前一致
+
+            # 世界重置后重新创建agent,更新新的world.player
+            self.agent = BasicAgent(world.player, 30) 
+            self.agent.follow_speed_limits(True)
+            self.destination = random.choice(world.spawn_points).location
+            self.agent.set_destination(self.destination)
+
         else:
             pass
 
@@ -1460,7 +1470,7 @@ def game_loop(args):
             settings = sim_world.get_settings()
             if not settings.synchronous_mode:
                 settings.synchronous_mode = True
-                settings.fixed_delta_seconds = 1 # 1/0.05 = 20。运行20次计算等于carla里的1s。在此改为0.25，1s四帧，每一帧的决策影响更大
+                settings.fixed_delta_seconds = 0.25 # 1/0.05 = 20。运行20次计算等于carla里的1s。在此改为0.25，1s四帧，每一帧的决策影响更大
             sim_world.apply_settings(settings)
 
             traffic_manager = client.get_trafficmanager()
@@ -1497,19 +1507,22 @@ def game_loop(args):
         if not os.path.isdir('./record\\camera2'):
             os.makedirs('./record\\camera2')
 
+
         while True:
             if args.sync:
                 sim_world.tick()
             clock.tick_busy_loop(60)
-            if controller.parse_events(client, world, clock, args.sync):
+            if controller.parse_events(client, world, clock, args.sync): # destination最开始在初始化中，此处方法不会刷新目的地
                 return
+
             world.tick(clock)
             world.render(display)
             pygame.display.flip()
 
-            # 到达目的地则自动驾驶控制器自动换个目标点
+            # 到达目的地则自动驾驶控制器自动换个目标点，controller中有传出的初始目的地，默认未done
             if controller.agent.done():  # Check whether the agent has reached its destination
-                controller.agent.set_destination(random.choice(world.spawn_points).location)
+                controller.destination = random.choice(world.spawn_points).location
+                controller.agent.set_destination(controller.destination)
                 world.hud.notification("Target reached", seconds=4.0)
                 print("The target has been reached, searching for another target")
 
@@ -1531,22 +1544,42 @@ def game_loop(args):
             cv2.imshow("i3_2", i3_2)
             cv2.waitKey(1)
 
-            ################################################################玩家控制信息
-            control_player = world.player.get_control()
-            # print("control_player", control_player)
-            throttle = control_player.throttle - control_player.brake # (-1, 1)
-            steer = control_player.steer
-            # print("throttle", throttle,"steer", steer)
+            ##################################################################################################当前信息
+            # 控制器信息
+            control_palyer = controller.control_player # 手动（玩家）控制输入
+            control_auto = controller.control_auto # 自动巡航（代理）输入
+            control_actual = controller.control # 实际执行
 
-            ################################################################奖励值相关
-            location_player = world.player.get_location() #当前位置（x,y,z）
+            throttle = control_actual.throttle - control_actual.brake # (-1, 1)
+            steer = control_actual.steer
+
+            # 车辆当前位置（x,y,z）和方向(三维矢量)
+            transform_player = world.player.get_transform()
+            # print(transform_player)
+            location_player =transform_player.location
+            forward_vector_player =transform_player.get_forward_vector() 
+
+            location = (location_player.x,location_player.y, location_player.z)
+            destination = (controller.destination.x,controller.destination.y ,controller.destination.z)
+            forward_vector = (forward_vector_player.x, forward_vector_player.y, forward_vector_player.z)
+
+            # 车辆初始点位置及距初始点距离
             location_start = world.start_point
             dist_to_start = location_player.distance(location_start)
-            # print("location_player", location_player,"location_start",location_start , "dist_to_start", dist_to_start)
+            start_point = (location_start.x, location_start.y, location_start.z)
 
+            # 车辆当前速度
             velocity_player = world.player.get_velocity() # Return: carla.Vector3D - m/s
-            kmh_player = int(3.6 * math.sqrt(velocity_player.x**2 + velocity_player.y**2 + velocity_player.z**2))
-            # print("kmh_player", kmh_player)
+            velocity = int(3.6 * math.sqrt(velocity_player.x**2 + velocity_player.y**2 + velocity_player.z**2)) # --> km/h
+
+            # 车辆当前加速度
+            acceleration_player = world.player.get_acceleration()
+            acceleration = (acceleration_player.x, acceleration_player.y, acceleration_player.z)
+
+            # 车辆当前角速度
+            angular_velocity_player = world.player.get_angular_velocity()
+            angular_velocity = (angular_velocity_player.x, angular_velocity_player.y, angular_velocity_player.z)
+
 
             # if world.lane_invasion_sensor._on_invasion:
             #     print("invasion the lane")
@@ -1561,7 +1594,7 @@ def game_loop(args):
             reward += np.clip(dist_to_start-dist_to_start_old, -10.0, 10.0) 
             # reward += (new_dis-dis)*1
             # reward +=(new_kmh - kmh)
-            reward +=(kmh_player) * 0.05
+            reward +=(velocity) * 0.05
             if len(world.collision_sensor.get_collision_history()) > 0: #撞击
                 done = True
                 # print("done")
@@ -1569,12 +1602,10 @@ def game_loop(args):
             if len(inva_lane) > 0: #跨道
                 # print("invasion lane") 
                 reward += -2
-            if kmh_player < 1:
+            if velocity < 1:
                 reward += -1
             if throttle > 0:
                 reward += 1
-
-            # print("step:",step_tick, "reward",reward)
 
             dist_to_start_old = dist_to_start
 
@@ -1583,10 +1614,12 @@ def game_loop(args):
             world.collision_sensor.history.clear()
 
             #################################################################保存图片、数据
+            data = [[throttle, steer], location, start_point, destination, forward_vector, velocity, acceleration, angular_velocity, reward]
+            
             if world.record == True:
                 mpimg.imsave("./record/camera1/{}.jpg".format(world.step_tick), i3_1)
                 mpimg.imsave("./record/camera2/{}.jpg".format(world.step_tick), i3_2)
-                data = [[throttle, steer], (location_player.x,location_player.y, location_player.z), kmh_player, reward]
+
                 data_dic["{}".format(world.step_tick)] = data
 
             world.step_tick += 1
@@ -1609,18 +1642,23 @@ def game_loop(args):
 
             #################################################################按step自动重置世界功能
             if controller.step_reset == True:
-                controller.re_world_step(world, world.step_tick, 300) # step_lenth = 300，300帧重置一次
-                
-                # 世界重置后重新创建agent,更新新的world.player
-                controller.agent = BasicAgent(world.player, 30) 
-                controller.agent.follow_speed_limits(True)
-                destination = random.choice(world.spawn_points).location
-                controller.agent.set_destination(destination)
+                controller.re_world_step(world, world.step_tick, 300) # step_lenth = 300，300帧重置一次。重新安置自动巡航agent在此中
+
+            #####################统一print
+
+            # print(control_auto)
+            # print(control_actual)
+            # print(data, "\n")
+            print("step:",world.step_tick, "reward",reward)
+
+
+
 
 
 
     finally:
-        np.save('record\\record_dic.npy', data_dic)
+        if world.record == True:
+            np.save('record\\record_dic.npy', data_dic)
 
         if original_settings:
             sim_world.apply_settings(original_settings)

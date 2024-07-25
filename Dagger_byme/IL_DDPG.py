@@ -27,7 +27,7 @@ test_data_index = list(test_data_index)
 now = time.ctime(time.time())
 now = now.replace(" ","_").replace(":", "_")
 
-def get_states_actions(data_index ,batch_size):
+def get_states_actions(data_index ,batch_size): # 此函数current_state是对的，采集的数据中第四个alpha通道已剔除
     # 采样
     minibatch = random.sample(data_index, batch_size)
     # print(minibatch)

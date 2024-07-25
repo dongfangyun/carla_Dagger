@@ -3,10 +3,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-#data = [[throttle, steer], (location_player.x,location_player.y, location_player.z), kmh_player, reward]
+#data = data = [[throttle, steer], location, start_point, destination, forward_vector, velocity, acceleration, angular_velocity, reward]
 
 # load_dict = np.load('./1万自动驾驶step300fps4//record_dic.npy', allow_pickle=True).item()
-load_dict = np.load('./1万自动驾驶step300fps4//record_dic.npy', allow_pickle=True).item()
+load_dict = np.load('./1万全属性step300fps4//record_dic.npy', allow_pickle=True).item()
 
 for key, value in load_dict.items():
     print("{}: {}".format(key, value))
@@ -36,12 +36,13 @@ action = []
 for i in minibatch:
     
     action.append(load_dict["{}".format(i)][0])
-    kmh = load_dict["{}".format(i)][-2]
+    kmh = load_dict["{}".format(i)][-4]
     # print(kmh)
     kmh_array = np.ones((240, 320, 1)) * kmh
+    # print(kmh_array.shape)
 
-    camera1_img = mpimg.imread('./1万自动驾驶step300fps4//camera1//{}.jpg'.format(i))
-    camera2_img = mpimg.imread('./1万自动驾驶step300fps4//camera2//{}.jpg'.format(i))
+    camera1_img = mpimg.imread('./1万全属性step300fps4//camera1//{}.jpg'.format(i))
+    camera2_img = mpimg.imread('./1万全属性step300fps4//camera2//{}.jpg'.format(i))
     
     current_state = np.concatenate((camera1_img, camera2_img, kmh_array), axis=2) 
     current_states.append(current_state)
