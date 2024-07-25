@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-#data = data = [[throttle, steer], location, start_point, destination, forward_vector, velocity, acceleration, angular_velocity, reward]
+# data = [[throttle, steer], location, start_point, destination, forward_vector, velocity, acceleration, angular_velocity, reward]
 
 # load_dict = np.load('./1万自动驾驶step300fps4//record_dic.npy', allow_pickle=True).item()
 load_dict = np.load('./1万全属性step300fps4//record_dic.npy', allow_pickle=True).item()

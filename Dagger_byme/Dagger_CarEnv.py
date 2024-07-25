@@ -102,8 +102,8 @@ class CarEnv:
         # 初始布置的expert控制器。重置世界后自动再布置
         self.agent = BasicAgent(self.vehicle, 30) 
         self.agent.follow_speed_limits(True)
-        destination = random.choice(self.world.get_map().get_spawn_points()).location
-        self.agent.set_destination(destination)
+        self.destination = random.choice(self.world.get_map().get_spawn_points()).location
+        self.agent.set_destination(self.destination)
 
     def step(self, action, episode_steps): #action.shape([1,2]):  油门刹车action[0][0]:(-1,1) 方向盘action[0][1]:(-1,1)
         throttle = float(torch.clip(action[0][0], 0, 1))
@@ -112,6 +112,33 @@ class CarEnv:
         steer = float(torch.clip(action[0][1], -1, 1))
 
         self.vehicle.apply_control(carla.VehicleControl(throttle=throttle, steer=steer, brake=brake, reverse=False))
+
+        # 车辆当前位置（x,y,z）和方向(三维矢量)
+        transform_player = self.vehicle.get_transform()
+        # print(transform_player)
+        location_player =transform_player.location
+        forward_vector_player =transform_player.get_forward_vector() 
+
+        location = (location_player.x,location_player.y, location_player.z)
+        destination = (self.destination.x, self.destination.y , self.destination.z)
+        forward_vector = (forward_vector_player.x, forward_vector_player.y, forward_vector_player.z)
+
+        # 车辆初始点位置及距初始点距离
+        location_start = world.start_point
+        dist_to_start = location_player.distance(location_start)
+        start_point = (location_start.x, location_start.y, location_start.z)
+
+        # 车辆当前速度
+        velocity_player = world.player.get_velocity() # Return: carla.Vector3D - m/s
+        velocity = int(3.6 * math.sqrt(velocity_player.x**2 + velocity_player.y**2 + velocity_player.z**2)) # --> km/h
+
+        # 车辆当前加速度
+        acceleration_player = world.player.get_acceleration()
+        acceleration = (acceleration_player.x, acceleration_player.y, acceleration_player.z)
+
+        # 车辆当前角速度
+        angular_velocity_player = world.player.get_angular_velocity()
+        angular_velocity = (angular_velocity_player.x, angular_velocity_player.y, angular_velocity_player.z)
 
         v = self.vehicle.get_velocity()
         kmh = int(3.6 * math.sqrt(v.x**2 + v.y**2 + v.z**2))

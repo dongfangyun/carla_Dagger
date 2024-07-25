@@ -24,10 +24,10 @@ except IndexError:
     pass
 import carla
 
-from continous_hd_CarEnv import CarEnv, IM_WIDTH, IM_HEIGHT,camera_queue1, camera_queue2 
+from Dagger_CarEnv import CarEnv, IM_WIDTH, IM_HEIGHT,camera_queue1, camera_queue2 
 
 writer = SummaryWriter("./logs_play_hd_DDPG")
-log_dir = r"IL_experience_model\\model_Thu_Jul_18_15_31_21_2024.pth"
+log_dir = r"IL_experience_model\\model_Thu_Jul_25_19_35_20_2024.pth"
 
 SHOW_PREVIEW = False # 训练时播放摄像镜头
 LOG = False # 训练时向tensorboard中写入记录
@@ -40,59 +40,13 @@ EPISODES = 100 # 游戏进行总次数
 DISCOUNT = 0.99 # 贝尔曼公式中折扣因子γ
 
 
-"""
-    Policynet():
-    input: state([batch, 7,  height, width])
-    return: action([batch, 2])
-"""
-#去掉一层的网络（目前实验网络数量最少）
-# class Policynet(nn.Module):    
-#     def __init__(self, IM_HEIGHT, IM_WIDTH):
-#         super(Policynet, self).__init__() 
-#         self.conv1 = nn.Sequential(
-#             # nn.BatchNorm2d(7),
-#             nn.Conv2d(7, 32, kernel_size=5, stride=1, padding=2),
-#             nn.ReLU(),
-#             nn.MaxPool2d(2),
-#         )
-#         self.conv2 = nn.Sequential(
-#             # nn.BatchNorm2d(32),
-#             nn.Conv2d(32, 32, kernel_size=5, stride=1, padding=2),
-#             nn.ReLU(),
-#             nn.MaxPool2d(2),
-#         )
-#         self.conv3 = nn.Sequential(
-#             # nn.BatchNorm2d(32),
-#             nn.Conv2d(32, 64, kernel_size=5, stride=1, padding=2),
-#             nn.ReLU(),
-#             nn.MaxPool2d(2),
-#             # nn.BatchNorm2d(64),
-#         )
-#         self.dense = nn.Sequential(
-#             nn.Linear(int(64 * (IM_HEIGHT/4) * (IM_WIDTH/4)), 64),
-#             nn.ReLU(),
-#             nn.Dropout(0.5),
-#             nn.Linear(64, 2), # action(batch, 2)
-#             nn.Tanh()
-#         )
-
-#     def forward(self, x):
-#         # conv1_out = self.conv1(x) 
-#         conv2_out = self.conv1(x) 
-#         # conv2_out = self.conv2(conv1_out)
-#         conv3_out = self.conv3(conv2_out)
-#         res = conv3_out.reshape(conv3_out.size(0), -1)
-#         out = self.dense(res)
-#         # print(out)
-#         return out # (batch, 2)
-
-#标准网络结构
 class Policynet(nn.Module):
     def __init__(self, IM_HEIGHT, IM_WIDTH):
         super(Policynet, self).__init__() 
+        # images的卷积层+全连接层
         self.conv1 = nn.Sequential(
             # nn.BatchNorm2d(7),
-            nn.Conv2d(7, 32, kernel_size=5, stride=1, padding=2),
+            nn.Conv2d(6, 32, kernel_size=5, stride=1, padding=2),
             nn.ReLU(),
             nn.MaxPool2d(2),
         )
@@ -109,30 +63,69 @@ class Policynet(nn.Module):
             nn.MaxPool2d(2),
             # nn.BatchNorm2d(64),
         )
-        self.dense = nn.Sequential(
+        self.conv_fc1 = nn.Sequential(
             nn.Linear(int(64 * (IM_HEIGHT/8) * (IM_WIDTH/8)), 64),
             nn.ReLU(),
             nn.Dropout(0.5),
-            nn.Linear(64, 2), # action(batch, 2)
+        )
+        self.conv_fc2 = nn.Sequential(
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+        )
+
+        # attributes全连接层
+        self.fc1 = nn.Sequential(
+            nn.Linear(20, 64),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+        )
+        self.fc2 = nn.Sequential(
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+        )
+        self.fc3 = nn.Sequential(
+            nn.Linear(32, 32),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+        )
+        
+        # 拼接后的全连接层 32 + 32 = 64 --> 32 -->16 -->2
+        self.cat_fc1 = nn.Sequential(
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+        )
+        self.cat_fc2 = nn.Sequential(
+            nn.Linear(32, 16),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(16, 2), 
             nn.Tanh()
         )
 
-    def forward(self, x):
-        conv1_out = self.conv1(x) 
-        # conv2_out = self.conv1(x) 
+    def forward(self, images, attributes):
+        conv1_out = self.conv1(images) 
         conv2_out = self.conv2(conv1_out)
         conv3_out = self.conv3(conv2_out)
-        res = conv3_out.reshape(conv3_out.size(0), -1)
-        out = self.dense(res)
-        # print(out)
-        return out # (batch, 2)
-    
+        conv3_res = conv3_out.reshape(conv3_out.size(0), -1) # --> (76800)
+        conv_fc1_out = self.conv_fc1(conv3_res) # 76800 --> (64)
+        conv_fc2_out = self.conv_fc2(conv_fc1_out) # (32)
+        # print("conv_fc2_out", conv_fc2_out.shape) #torch.Size([64, 32])
 
-"""
-    QValueNet():
-    input: state([batch, 7,  height, width]), action([batch, 2])
-    return: QValue(1)
-"""
+        fc1_out = self.fc1(attributes) # 20 --> 64
+        fc2_out = self.fc2(fc1_out) # 64 --> 32
+        fc3_out = self.fc3(fc2_out) # 32 --> 32
+        # print("fc3_out", fc3_out.shape) # torch.Size([64, 32])
+
+        cat = torch.cat(( conv_fc2_out, fc3_out), 1) # 32 + 32 = 64 --> 32
+        # print("cat", cat.shape) # torch.Size([64, 64])
+        cat_fc1_out = self.cat_fc1(cat) # 32 --> 16
+        cat_fc2_out = self.cat_fc2(cat_fc1_out) # 16 --> 2 
+
+        return cat_fc2_out # (batch, 2)
+    
 
 if torch.cuda.device_count() > 1:
     device = torch.device("cuda:1") 
@@ -283,11 +276,11 @@ if __name__ == '__main__':
                 cv2.imshow("i3_2", i3_2)
                 cv2.waitKey(1)
 
-            new_state = np.concatenate((i3_1, i3_2, kmh_array), axis=2) # （h, w, 3+3+1）= (480, 640, 7)
+            new_state = np.concatenate((i3_1, i3_2), axis=2) # （h, w, 3+3+1）= (480, 640, 7)
 
             current_state = new_state.copy() #array直接复制会浅拷贝共用内存，此处需深拷贝保持二者独立性 (480, 640, 3)
 
-            action = agent.get_action(current_state)
+            action = agent.get_action(current_state, current_attributes)
 
             # reward, done, _ = env.step(action)
             done, new_kmh, dis_to_start, inva_lane= env.step(action, episode_steps)
