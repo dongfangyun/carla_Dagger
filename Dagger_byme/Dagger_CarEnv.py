@@ -124,24 +124,28 @@ class CarEnv:
         forward_vector = (forward_vector_player.x, forward_vector_player.y, forward_vector_player.z)
 
         # 车辆初始点位置及距初始点距离
-        location_start = world.start_point
+        location_start = self.location_start
         dist_to_start = location_player.distance(location_start)
         start_point = (location_start.x, location_start.y, location_start.z)
 
         # 车辆当前速度
-        velocity_player = world.player.get_velocity() # Return: carla.Vector3D - m/s
+        velocity_player = self.vehicle.get_velocity() # Return: carla.Vector3D - m/s
         velocity = int(3.6 * math.sqrt(velocity_player.x**2 + velocity_player.y**2 + velocity_player.z**2)) # --> km/h
 
         # 车辆当前加速度
-        acceleration_player = world.player.get_acceleration()
+        acceleration_player = self.vehicle.get_acceleration()
         acceleration = (acceleration_player.x, acceleration_player.y, acceleration_player.z)
 
         # 车辆当前角速度
-        angular_velocity_player = world.player.get_angular_velocity()
+        angular_velocity_player = self.vehicle.get_angular_velocity()
         angular_velocity = (angular_velocity_player.x, angular_velocity_player.y, angular_velocity_player.z)
 
-        v = self.vehicle.get_velocity()
-        kmh = int(3.6 * math.sqrt(v.x**2 + v.y**2 + v.z**2))
+        # 检测是否跨越车道线
+        if len(self.invasion_hist) != 0:
+            self.invation = True
+            self.invasion_hist.clear()
+        else:
+            self.invation = False
 
         # 发生碰撞时游戏结束
         if len(self.collision_hist) != 0:
@@ -157,8 +161,10 @@ class CarEnv:
         self.act_expert = self.agent.run_step() # 专家指导动作   
         self.act_expert.manual_gear_shift = False
 
+        data = [*location, *start_point, *destination, *forward_vector, velocity, *acceleration, *angular_velocity]
+
         # print(self.done)
-        return  self.done, kmh, self.act_expert
+        return  self.done, data, self.act_expert, dist_to_start, self.invation
     
 camera_queue1 = Queue()
 camera_queue2 = Queue()
