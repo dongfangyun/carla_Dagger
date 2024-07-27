@@ -8,8 +8,36 @@ import torch.nn as nn
 # load_dict = np.load('./1万自动驾驶step300fps4//record_dic.npy', allow_pickle=True).item()
 load_dict = np.load('./1万全属性step300fps4//record_dic.npy', allow_pickle=True).item()
 
-for key, value in load_dict.items():
-    print("{}: {}".format(key, value))
+## 查看全字典
+# for key, value in load_dict.items():
+#     print("{}: {}".format(key, value))
+
+minibatch = list(range(0,16))
+attributes = []
+
+for i in minibatch:
+
+    location = load_dict["{}".format(i)][1] # (3)
+    start_point = load_dict["{}".format(i)][2] # (3)
+    destination = load_dict["{}".format(i)][3] # (3)
+    forward_vector = load_dict["{}".format(i)][4] # (3)
+    velocity = load_dict["{}".format(i)][5] # (1)
+    acceleration = load_dict["{}".format(i)][6] # (3)
+    angular_velocity = load_dict["{}".format(i)][7] # (3)
+    reward = load_dict["{}".format(i)][8] # (1)
+
+    attribute = [*location, *start_point, *destination, *forward_vector, velocity, *acceleration, *angular_velocity, reward]
+    attributes.append(attribute) # len(20)
+
+attributes = torch.tensor(attributes).float()
+print(attributes.shape) # torch.Size([16, 20])
+# print(attributes)
+
+b = nn.BatchNorm1d(20)
+output = b(attributes)
+
+print(attributes[0])
+print(output[0])
 
 list_dic_index = range(len(load_dict))
 print("字典总长度",len(list_dic_index))
