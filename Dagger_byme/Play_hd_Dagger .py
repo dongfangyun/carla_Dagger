@@ -181,7 +181,7 @@ class Dagger:
         self.training_initialized = False
 
     def get_action(self, images, attributes): # state(16,c,h,w)
-        self.actor.eval() 
+        self.actor.eval() # 播放模式无需梯度计算，不打开.train()
         with torch.no_grad():
             images = torch.tensor(images, dtype=torch.float).to(device) # (hwc)
             images = images/255 
@@ -190,7 +190,6 @@ class Dagger:
 
             action = self.actor( images, attributes)# action(batch, 2)a
             
-        self.actor.train() #########此处为何要train？？？？？？？？
         return action # action(batch, 2)
 
 def caculate_reward(dist_to_start, dist_to_start_old, kmh_player, done, inva_lane, action):
@@ -233,37 +232,39 @@ if __name__ == '__main__':
         # Reset environment and get initial state
         env.reset() #旧版处reset里会先tick()一下，往队列里传入初始图像 这里面没tick()
         # 手动tick()一下
-        env.world.tick()
+        # env.world.tick() 
 
-        current_state1 = camera_queue1.get() # <class 'carla.libcarla.Image'> Image(frame=154824, timestamp=1589.824231, size=640x480)
-        i_1 = np.array(current_state1.raw_data) #(1228800,) = 640 X 480 X 4   	.raw_data：Array of BGRA 32-bit pixels
-        i2_1 = i_1.reshape((IM_HEIGHT, IM_WIDTH, 4))
-        i3_1 = i2_1[:, :, :3] # （h, w, 3）= (480, 640, 3)
+        # 模仿学习、Dagger及播放模型均无需初始帧以及上一状态
 
-        current_state2 = camera_queue2.get() # <class 'carla.libcarla.Image'> Image(frame=154824, timestamp=1589.824231, size=640x480)
-        current_state2.convert(carla.ColorConverter.CityScapesPalette)
-        i_2 = np.array(current_state2.raw_data) #(1228800,) = 640 X 480 X 4
-        i2_2 = i_2.reshape((IM_HEIGHT, IM_WIDTH, 4))
-        i3_2 = i2_2[:, :, :3] # （h, w, 3）= (480, 640, 3)  # （h, w, 3）= (480, 640, 3)
+        # current_state1 = camera_queue1.get() # <class 'carla.libcarla.Image'> Image(frame=154824, timestamp=1589.824231, size=640x480)
+        # i_1 = np.array(current_state1.raw_data) #(1228800,) = 640 X 480 X 4   	.raw_data：Array of BGRA 32-bit pixels
+        # i2_1 = i_1.reshape((IM_HEIGHT, IM_WIDTH, 4))
+        # i3_1 = i2_1[:, :, :3] # （h, w, 3）= (480, 640, 3)
 
-        dis_to_start_old = 0
-        current_state = np.concatenate((i3_1, i3_2), axis=2) # （h, w, 3）= (480, 640, 3+3+1 = 7)
+        # current_state2 = camera_queue2.get() # <class 'carla.libcarla.Image'> Image(frame=154824, timestamp=1589.824231, size=640x480)
+        # current_state2.convert(carla.ColorConverter.CityScapesPalette)
+        # i_2 = np.array(current_state2.raw_data) #(1228800,) = 640 X 480 X 4
+        # i2_2 = i_2.reshape((IM_HEIGHT, IM_WIDTH, 4))
+        # i3_2 = i2_2[:, :, :3] # （h, w, 3）= (480, 640, 3)  # （h, w, 3）= (480, 640, 3)
 
-        action = [0, 0]  # torch.Size([1, 2])
-        location = np.array([0, 0, 0]) # (3,)
-        start_point = np.array([0, 0, 0]) # (3,)
-        destination = np.array([0, 0, 0]) # (3,)
-        forward_vector = np.array([0, 0, 0]) # (3,)
-        velocity = 0
-        acceleration = np.array([0, 0, 0]) # (3,)
-        angular_velocity = np.array([0, 0, 0]) # (3,)
-        reward =0
+        # dis_to_start_old = 0
+        # current_state = np.concatenate((i3_1, i3_2), axis=2) # （h, w, 3）= (480, 640, 3+3+1 = 7)
 
-        data = [[*location, *start_point, *destination, *forward_vector, velocity, *acceleration, *angular_velocity, reward]] # 预留batch_sizee维度
+        action = torch.tensor([[0.1, 0.1]])  # torch.Size([1, 2]) # 给个初始动作其实就可以了
+        # location = np.array([0, 0, 0]) # (3,)
+        # start_point = np.array([0, 0, 0]) # (3,)
+        # destination = np.array([0, 0, 0]) # (3,)
+        # forward_vector = np.array([0, 0, 0]) # (3,)
+        # velocity = 0
+        # acceleration = np.array([0, 0, 0]) # (3,)
+        # angular_velocity = np.array([0, 0, 0]) # (3,)
+        # reward =0
 
-        data = torch.tensor(data).cuda().float() # ( ,20)
+        # data = [[*location, *start_point, *destination, *forward_vector, velocity, *acceleration, *angular_velocity, reward]] # 预留batch_sizee维度
 
-        done = False
+        # data = torch.tensor(data).cuda().float() # ( ,20)
+
+        # done = False
         
         #以上为初始帧的
 
@@ -295,30 +296,29 @@ if __name__ == '__main__':
                 cv2.imshow("i3_2", i3_2)
                 cv2.waitKey(1)
 
-            new_state = np.concatenate((i3_1, i3_2), axis=2) # （h, w, 3+3+1）= (480, 640, 7)
-
-            current_state = new_state.copy() #array直接复制会浅拷贝共用内存，此处需深拷贝保持二者独立性 (480, 640, 3)
-            # print(current_state.shape) # (240, 320, 6)
-            # print(data.shape) # torch.Size([20])
-
-            action = agent.get_action(current_state, data)
+            current_state = np.concatenate((i3_1, i3_2), axis=2) # （h, w, 3+3）= (240, 320, 6)
 
             # reward, done, _ = env.step(action)
             done, data, act_expert, dis_to_start, inva_lane= env.step(action, episode_steps)
-            reward = caculate_reward(dis_to_start, dis_to_start_old, data[-7], done, inva_lane, action)
+            reward = caculate_reward(dis_to_start, dis_to_start, data[-7], done, inva_lane, action)
             data.append(reward)
             data = [data] # data预留batch_size维度 (, 20)
             # print(data)
-
-
             data = torch.tensor(data).cuda().float()
 
-            data_old = data
+            action = agent.get_action(current_state, data)
 
-            dis_to_start_old = dis_to_start
+            # 分离损失函数，以便加权损失
+            loss_fn_throttle = nn.L1Loss(reduction='mean')
+            loss_fn_steer = nn.L1Loss(reduction='mean')
+            loss_fn_throttle = loss_fn_throttle.cuda()
+            loss_fn_steer = loss_fn_steer.cuda()
 
-            print(action)
-            print(act_expert)
+            loss_throttle = loss_fn_throttle(action[:, 0], act_expert[:, 0])
+            loss_steer = loss_fn_steer(action[:, 1], act_expert[:, 1])
+            # loss = loss_throttle + weight_loss_steer * loss_steer # 方向盘损失权重放大100倍
+
+            print(action, act_expert, loss_throttle, 100 * loss_steer)
 
             episode_reward += reward
 

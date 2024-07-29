@@ -97,8 +97,6 @@ class CarEnv:
         self.actor_list.append(self.invsensor)
         self.invsensor.listen(lambda event: self.invasion_hist.append(event))
 
-        # self.world.tick() #先tick一下将初始摄像头影像传入sensor_queue_out 先取消掉试试，理论上可行
-
         # 初始布置的expert控制器。重置世界后自动再布置
         self.agent = BasicAgent(self.vehicle, 30) 
         self.agent.follow_speed_limits(True)
@@ -160,6 +158,7 @@ class CarEnv:
         # 根据当前这一步执行专家指示
         self.act_expert = self.agent.run_step() # 专家指导动作   
         self.act_expert.manual_gear_shift = False
+        self.act_expert = torch.tensor([[self.act_expert.throttle - self.act_expert.brake, self.act_expert.steer]]).cuda()
 
         data = [*location, *start_point, *destination, *forward_vector, velocity, *acceleration, *angular_velocity]
 

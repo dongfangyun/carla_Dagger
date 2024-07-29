@@ -31,12 +31,14 @@ from Dagger_CarEnv import CarEnv, IM_WIDTH, IM_HEIGHT,camera_queue1, camera_queu
     input: state([batch, 7,  height, width])
     return: action([batch, 2])
 """
-class Policynet(nn.Module):
+
+class Policynet_cat_fc_pro(nn.Module):
     def __init__(self, IM_HEIGHT, IM_WIDTH):
-        super(Policynet, self).__init__() 
+        super(Policynet_cat_fc_pro, self).__init__() 
+        # images的卷积层+全连接层
         self.conv1 = nn.Sequential(
             # nn.BatchNorm2d(7),
-            nn.Conv2d(7, 32, kernel_size=5, stride=1, padding=2),
+            nn.Conv2d(6, 32, kernel_size=5, stride=1, padding=2),
             nn.ReLU(),
             nn.MaxPool2d(2),
         )
@@ -53,31 +55,121 @@ class Policynet(nn.Module):
             nn.MaxPool2d(2),
             # nn.BatchNorm2d(64),
         )
-        self.dense = nn.Sequential(
+        self.conv_fc1 = nn.Sequential(
             nn.Linear(int(64 * (IM_HEIGHT/8) * (IM_WIDTH/8)), 64),
             nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(64, 2), # action(batch, 2)
+            # nn.Dropout(0.5),
+        )
+        self.conv_fc2 = nn.Sequential(
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            # nn.Dropout(0.5),
+        )
+
+        # attributes全连接层
+        self.bn1 = nn.BatchNorm1d(20)
+        self.fc1 = nn.Sequential(
+            nn.Linear(20, 64),
+            nn.ReLU(),
+            # nn.Dropout(0.5),
+        )
+        self.fc2 = nn.Sequential(
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            # nn.Dropout(0.5),
+        )
+        self.fc3 = nn.Sequential(
+            nn.Linear(32, 32),
+            nn.ReLU(),
+            # nn.Dropout(0.5),
+        )
+        
+        # 拼接后的全连接层 32 + 32 = 64 --> 32 -->16 -->2
+        self.cat_fc1 = nn.Sequential(
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            # nn.Dropout(0.5),
+        )
+        self.cat_fc2 = nn.Sequential(
+            nn.Linear(32, 32),
+            nn.ReLU(),
+            # nn.Dropout(0.5),
+        )
+        self.cat_fc3 = nn.Sequential(
+            nn.Linear(32, 32),
+            nn.ReLU(),
+            # nn.Dropout(0.5),
+        )
+        self.cat_fc4 = nn.Sequential(
+            nn.Linear(32, 16),
+            nn.ReLU(),
+            # nn.Dropout(0.5),
+        )
+        self.cat_fc5 = nn.Sequential(
+            nn.Linear(16, 16),
+            nn.ReLU(),
+            # nn.Dropout(0.5),
+        )
+        self.cat_fc6 = nn.Sequential(
+            nn.Linear(16, 16),
+            nn.ReLU(),
+            # nn.Dropout(0.5),
+            nn.Linear(16, 2), 
             nn.Tanh()
         )
 
-    def forward(self, x):
-        conv1_out = self.conv1(x) 
+    def forward(self, images, attributes):
+        conv1_out = self.conv1(images) 
         conv2_out = self.conv2(conv1_out)
         conv3_out = self.conv3(conv2_out)
-        res = conv3_out.reshape(conv3_out.size(0), -1)
-        out = self.dense(res)
-        return out # (batch, 2)
+        conv3_res = conv3_out.reshape(conv3_out.size(0), -1) # --> (76800)
+        conv_fc1_out = self.conv_fc1(conv3_res) # 76800 --> (64)
+        conv_fc2_out = self.conv_fc2(conv_fc1_out) # (32)
+        # print("conv_fc2_out", conv_fc2_out.shape) #torch.Size([64, 32])
+
+        attributes = self.bn1(attributes) # 将20个特征先批归一化
+        fc1_out = self.fc1(attributes) # 20 --> 64
+        fc2_out = self.fc2(fc1_out) # 64 --> 32
+        fc3_out = self.fc3(fc2_out) # 32 --> 32
+        # print("fc3_out", fc3_out.shape) # torch.Size([64, 32])
+
+        cat = torch.cat(( conv_fc2_out, fc3_out), 1) # 32 + 32 = 64 --> 32
+        # print("cat", cat.shape) # torch.Size([64, 64])
+        cat_fc1_out = self.cat_fc1(cat) # 32 --> 16
+        cat_fc2_out = self.cat_fc2(cat_fc1_out) # 16 --> 2 
+        cat_fc3_out = self.cat_fc3(cat_fc2_out) # 
+        cat_fc4_out = self.cat_fc4(cat_fc3_out) # 
+        cat_fc5_out = self.cat_fc5(cat_fc4_out) # 
+        cat_fc6_out = self.cat_fc6(cat_fc5_out) # 
+
+        return cat_fc6_out # (batch, 2)
 
 if torch.cuda.device_count() > 1:
     device = torch.device("cuda:1") 
 else:
     device = torch.device("cuda:0")
 
-class Dagger:
-    def __init__(self,lr_actor=1e-2):
+def caculate_reward(dist_to_start, dist_to_start_old, kmh_player, done, inva_lane, action):
+    reward = 0.0
+    reward += np.clip(dist_to_start-dist_to_start_old, -10.0, 10.0) 
+    # reward += (new_dis-dis)*1
+    # reward +=(new_kmh - kmh)
+    reward +=(kmh_player) * 0.05
+    if done: #撞击
+        reward += -10
+    if inva_lane: #跨道
+        print("invasion lane") 
+        reward += -10
+    if kmh_player < 1:
+        reward += -1
+    if action[0][0] > 0.2:
+        reward += 1
+    return reward
 
-        self.actor = Policynet(IM_HEIGHT, IM_WIDTH).to("cuda:0")
+class Dagger:
+    def __init__(self,lr_actor=5e-5):
+
+        self.actor = Policynet_cat_fc_pro(IM_HEIGHT, IM_WIDTH).to("cuda:0")
 
         if torch.cuda.device_count() > 1:
             self.actor= nn.DataParallel(self.actor, device_ids = [0,1], output_device=device)
@@ -92,32 +184,26 @@ class Dagger:
                 self.actor.load_state_dict(checkpoint['model'])
                 self.actor_optimizer.load_state_dict(checkpoint['optimizer'])
                 start_epoch = checkpoint['epoch']
-                print('加载 epoch {} 成功！'.format(start_epoch))   
-
-        self.sigma = 0.1 #高斯噪声标准差
-        self.gamma = 0.99 #折扣因子
-
+                print('加载 epoch {} 结果成功！'.format(start_epoch))   
         
         self.replay_memory = deque(maxlen=REPLAY_MEMORY_SIZE) #上限12000的经验回放池队列
         self.terminate = False #没结束循环训练，当全部游戏次数跑完后此处会改为True，停止进程中的采样训练
 
-    def get_action(self, state): # state(16,c,h,w)
-        self.actor.eval() # 提取动作时无需反向传播，关闭梯度节省显存
+    def get_action(self, images, attributes): # state(16,c,h,w)
+        self.actor.eval() # 提取动作时无需反向传播，关闭梯度节省显存。！！！有个问题，双线程时关闭梯度会影响线程2的模型反向传播训练
         with torch.no_grad():
-            state = torch.tensor(state, dtype=torch.float).to(device) # (hwc)
-            state = state/255 
-            state = state.permute(2, 0, 1) # (chw)
-            state = state.unsqueeze(dim=0) # (n, h, w, c) 
+            images = torch.tensor(images, dtype=torch.float).to(device) # (hwc)
+            images = images/255 
+            images = images.permute(2, 0, 1) # (chw)
+            images = images.unsqueeze(dim=0) # (n, h, w, c) 
 
-            action = self.actor(state)# action(batch, 2)
+            action = self.actor(images, attributes)# action(batch, 2)
             
-            #给动作添加噪声，增加探索
-            action = action.clone() + torch.tensor(self.sigma * np.random.randn(2)).to(device) #self.action_dim = 2
         self.actor.train() # 获取动作后开启梯度计算
         return action # action(batch, 2)
 
     def update_replay_memory(self, transition): 
-        # transition = (current_state, action, reward, new_state, done)
+        # transition = (current_state, action, act_expert, done)
         self.replay_memory.append(transition)
         # 初始训练集可在此添加
 
@@ -166,7 +252,8 @@ if __name__ == '__main__':
     SHOW_PREVIEW = True # 训练时播放摄像镜头
 
     LOG = False # 训练时向tensorboard中写入记录
-    writer = SummaryWriter("./logs_Dagger")
+    if LOG:
+        writer = SummaryWriter("./logs_Dagger")
 
     SAVE = False # 保存模型
     if SAVE:
@@ -174,7 +261,7 @@ if __name__ == '__main__':
                 os.makedirs('Dagger_model')
 
     TRAINED_MODEL = True # 是否有预训练模型
-    trained_model_dir = r"IL_experience_model\\model_Thu_Jul_18_15_31_21_2024.pth" # 装载模仿学习预训练模型
+    trained_model_dir = r"IL_experience_model\\model_Sun_Jul_28_16_43_50_2024.pth" # 装载模仿学习预训练模型
 
     # 两种思路
     # 1. 将IL数据集作为初始数据集，不断往里面混入新数据-知乎伪代码展示
@@ -203,13 +290,10 @@ if __name__ == '__main__':
         env.collision_hist = [] # 记录碰撞发生的列表
 
         # Reset environment and get initial state
-        env.reset() #此处reset里会先tick()一下，往队列里传入初始图像::::此处tick可取消
+        env.reset() #此处reset里会先tick()一下，往队列里传入初始图像
+        # env.world.tick()
 
-        act_agent = torch.tensor([[0, 0]]).to(device)  # torch.Size([1, 2])
-        done = False
-        kmh = 0
-        kmh_array = np.ones((IM_HEIGHT, IM_WIDTH, 1))*kmh # （h, w, 1）= (480, 640, 1)
-        #以上为初始帧的s,a,r,done,kmh,dis
+        action = torch.tensor([[0, 0]]).to(device)  # torch.Size([1, 2])
 
         episode_start = time.time()
         episode_num += 1
@@ -239,15 +323,33 @@ if __name__ == '__main__':
                 cv2.imshow("i3_2", i3_2)
                 cv2.waitKey(1)
 
-            current_state = np.concatenate((i3_1, i3_2, kmh_array), axis=2) # （h, w, 3+3+1）= (480, 640, 7)
+            current_state = np.concatenate((i3_1, i3_2), axis=2) # （h, w, 3+3+1）= (480, 640, 7) 
 
-            act_agent = agent.get_action(current_state)
+            # reward, done, _ = env.step(action)
+            done, data, act_expert, dis_to_start, inva_lane= env.step(action, episode_steps)
+            reward = caculate_reward(dis_to_start, dis_to_start, data[-7], done, inva_lane, action)
+            data.append(reward)
+            data = [data] # data预留batch_size维度 (, 20)
+            # print(data)
+            data = torch.tensor(data).cuda().float()
+            # data = [*location, *start_point, *destination, *forward_vector, velocity, *acceleration, *angular_velocity]
 
-            done, kmh, act_expert= env.step(act_agent, episode_steps)
+            action = agent.get_action(current_state, data)
 
-            print(act_agent, act_expert)
+            # 分离损失函数，以便加权损失
+            loss_fn_throttle = nn.L1Loss(reduction='mean')
+            loss_fn_steer = nn.L1Loss(reduction='mean')
+            loss_fn_throttle = loss_fn_throttle.cuda()
+            loss_fn_steer = loss_fn_steer.cuda()
 
-            agent.update_replay_memory((current_state, act_agent, act_expert, done)) # 此处将new_state换为act_expert
+            loss_throttle = loss_fn_throttle(action[:, 0], act_expert[:, 0])
+            loss_steer = loss_fn_steer(action[:, 1], act_expert[:, 1])
+            # loss = loss_throttle + weight_loss_steer * loss_steer # 方向盘损失权重放大100倍
+
+            print(action, act_expert, loss_throttle, 100 * loss_steer)
+
+
+            agent.update_replay_memory((current_state, action, act_expert, done)) # 此处将new_state换为act_expert
 
             # set the sectator to follow the ego vehicle
             spectator = env.world.get_spectator()
@@ -258,7 +360,7 @@ if __name__ == '__main__':
             episode_steps += 1
 
             if done:
-                agent.update_replay_memory((current_state, act_agent, act_expert, done)) #此处current_state == new_state，new_state不参与Q值拟合训练运算
+                agent.update_replay_memory((current_state, action, act_expert, done)) 
                 break
 
         # End of episode - destroy agents
