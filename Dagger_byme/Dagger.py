@@ -158,7 +158,7 @@ def caculate_reward(dist_to_start, dist_to_start_old, kmh_player, done, inva_lan
     if done: #撞击
         reward += -10
     if inva_lane: #跨道
-        print("invasion lane") 
+        # print("invasion lane") 
         reward += -10
     if kmh_player < 1:
         reward += -1
@@ -207,24 +207,53 @@ class Dagger:
         self.replay_memory.append(transition)
         # 初始训练集可在此添加
 
-    # def train(self):
-    #     minibatch = random.sample(self.replay_memory, MINIBATCH_SIZE) #每次采样16个轨迹作为一批次同时训练
+    def train(self):
+        minibatch = random.sample(self.replay_memory, MINIBATCH_SIZE) #每次采样16个轨迹作为一批次同时训练
+        # transition: (current_state, action, act_expert, done, data)
+        # current_state: (240, 320, 6) 
+        # data = [*location, *start_point, *destination, *forward_vector, velocity, *acceleration, *angular_velocity, reward]: (, 20)
 
-    #     # 16个随机样本的current_states，16x(h, w, c) --> (16, c, h, w)
-    #     current_states = np.array([transition[0] for transition in minibatch])/255 #(16, h, w, c)
-    #     current_states = torch.from_numpy(current_states)  #Creating a tensor from a list of numpy.ndarrays is extremely slow. Please consider converting the list to a single numpy.ndarray with numpy.array() before converting to a tensor.
-    #     current_states = current_states.to(torch.float32).to(device)
-    #     current_states = current_states.permute(0,3,1,2) # (16, c, h, w)
+        current_states = []
+        actions = []
+        actions_expert = []
+        attributes = []
 
-    #     act_exper = 
-    #     act_agent = self.actor(current_states)
-    #     actor_loss = 
+        for transition in minibatch:
+            # print(transition[1]) # tensor([[ 0.5837, -0.0024]], device='cuda:0')
+            current_states.append(transition[0])
+            actions.append(*transition[1].tolist())
+            actions_expert.append(*transition[2].tolist())
+            attributes.append(*transition[4].tolist()) 
 
-    #     self.actor_optimizer.zero_grad() # 梯度清零
-    #     actor_loss.backward() # 产生梯度 同时对critic和actor产生梯度！其实不影响。只更critic前会清零
-    #     self.actor_optimizer.step() # 使用target_critic做loss后，actor和critic更新的先后顺序也无所谓了
+        # 16个随机样本的current_states: 16 * (h, w, c) --> (16, c, h, w)
+        current_states = np.array(current_states)/255 #(16, h, w, c)   这里看后期能不能优化掉，直接list[tensor()]/255
+        current_states = torch.from_numpy(current_states)  #Creating a tensor from a list of numpy.ndarrays is extremely slow. Please consider converting the list to a single numpy.ndarray with numpy.array() before converting to a tensor.
+        current_states = current_states.to(torch.float32).to(device)
+        current_states = current_states.permute(0,3,1,2) # (16, c, h, w)
 
-    #     return actor_loss.item()
+        actions= torch.tensor(actions).cuda() # 实际执行的action，没啥用。大循环里可以看实际每一步的loss，# actions: torch.Size([16, 2])
+        attributes = torch.tensor(attributes).cuda() # attributes: torch.Size([16, 2])
+
+        actions_agent = self.actor(current_states, attributes)
+        actions_expert = torch.tensor(actions_expert).cuda() #
+        
+        # 分离损失函数，以便加权损失
+        loss_fn_throttle = nn.L1Loss(reduction='mean')
+        loss_fn_steer = nn.L1Loss(reduction='mean')
+        loss_fn_throttle = loss_fn_throttle.cuda()
+        loss_fn_steer = loss_fn_steer.cuda()
+
+        loss_throttle = loss_fn_throttle(actions_agent[:, 0], actions_expert[:, 0])
+        loss_steer = loss_fn_steer(actions_agent[:, 1], actions_expert[:, 1])
+        actor_loss = loss_throttle + 100 * loss_steer # 方向盘损失权重放大100倍
+
+        # print(action, act_expert, loss_throttle, 100 * loss_steer) 
+
+        self.actor_optimizer.zero_grad() # 梯度清零
+        actor_loss.backward() # 产生梯度 同时对critic和actor产生梯度！其实不影响。只更critic前会清零
+        self.actor_optimizer.step() # 使用target_critic做loss后，actor和critic更新的先后顺序也无所谓了
+
+        return actor_loss.item()
     
     def train_in_loop(self):
         total_train_step = 0
@@ -236,10 +265,11 @@ class Dagger:
                 print(len(self.replay_memory))
                 # return
 
-            if len(self.replay_memory) > MIN_REPLAY_MEMORY_SIZE: # 当经验回放池样本数量大于MIN_REPLAY_MEMORY_SIZE才会开始采样训练
+            else: # 当经验回放池样本数量大于MIN_REPLAY_MEMORY_SIZE才会开始采样训练
                 actor_loss = self.train()
-                print("loss:", actor_loss)
+                # print("loss:", actor_loss)
                 total_train_step += 1
+                print("total_train_step", total_train_step)
 
                 if LOG:
                     writer.add_scalar("actor_loss_{}".format(now), actor_loss, total_train_step)
@@ -251,14 +281,15 @@ if __name__ == '__main__':
 
     SHOW_PREVIEW = True # 训练时播放摄像镜头
 
-    LOG = False # 训练时向tensorboard中写入记录
+    LOG = True # 训练时向tensorboard中写入记录
     if LOG:
         writer = SummaryWriter("./logs_Dagger")
 
     SAVE = False # 保存模型
     if SAVE:
-        if not os.path.isdir('Dagger_model'):
-                os.makedirs('Dagger_model')
+        if not os.path.isdir('./Dagger_model'):
+            os.makedirs('./Dagger_model')
+        path='./Dagger_model/model_{}.pth'.format(now)
 
     TRAINED_MODEL = True # 是否有预训练模型
     trained_model_dir = r"IL_experience_model\\model_Sun_Jul_28_16_43_50_2024.pth" # 装载模仿学习预训练模型
@@ -268,8 +299,8 @@ if __name__ == '__main__':
     # 2. 不要初始数据集，抓训练数据的时效性
     # 理论上，经过IL预训练模型。不需要分权融合专家和agent。已经相当于分权后期，执行动作全部采用agent，拟合expert真值
 
-    REPLAY_MEMORY_SIZE = 12000 # 经验回放池最大容量——足以容纳预训练/或不需要
-    MIN_REPLAY_MEMORY_SIZE = 500# 抽样训练开始时经验回放池的最小样本数
+    REPLAY_MEMORY_SIZE = 2000 # 经验回放池最大容量——足以容纳预训练/或不需要
+    MIN_REPLAY_MEMORY_SIZE = 100# 抽样训练开始时经验回放池的最小样本数
     MINIBATCH_SIZE = 16 # 每次从经验回放池的采样数（作为训练的同一批次）   此大小影响运算速度/显存
     EPISODES = 1000 # 游戏进行总次数
 
@@ -279,9 +310,9 @@ if __name__ == '__main__':
 
     Original_settings = env.original_settings # 将原设置传出来保存
 
-    # # Start training thread and wait for training to be initialized
-    # trainer_thread = Thread(target=agent.train_in_loop, daemon=True) #创建一个线程，调用的函数是train_in_loop
-    # trainer_thread.start() #此处会直接往下走，同时线程分支（train_in_loop，训练一批）开始运行
+    # Start training thread and wait for training to be initialized
+    trainer_thread = Thread(target=agent.train_in_loop, daemon=True) #创建一个线程，调用的函数是train_in_loop
+    trainer_thread.start() #此处会直接往下走，同时线程分支（train_in_loop，训练一批）开始运行
 
     episode_num = 0 # 游戏进行的次数
 
@@ -332,7 +363,7 @@ if __name__ == '__main__':
             data = [data] # data预留batch_size维度 (, 20)
             # print(data)
             data = torch.tensor(data).cuda().float()
-            # data = [*location, *start_point, *destination, *forward_vector, velocity, *acceleration, *angular_velocity]
+            # data = [*location, *start_point, *destination, *forward_vector, velocity, *acceleration, *angular_velocity, reward]
 
             action = agent.get_action(current_state, data)
 
@@ -346,10 +377,9 @@ if __name__ == '__main__':
             loss_steer = loss_fn_steer(action[:, 1], act_expert[:, 1])
             # loss = loss_throttle + weight_loss_steer * loss_steer # 方向盘损失权重放大100倍
 
-            print(action, act_expert, loss_throttle, 100 * loss_steer)
+            # print(action, act_expert, loss_throttle, 100 * loss_steer)
 
-
-            agent.update_replay_memory((current_state, action, act_expert, done)) # 此处将new_state换为act_expert
+            agent.update_replay_memory((current_state, action, act_expert, done, data)) 
 
             # set the sectator to follow the ego vehicle
             spectator = env.world.get_spectator()
@@ -360,15 +390,18 @@ if __name__ == '__main__':
             episode_steps += 1
 
             if done:
-                agent.update_replay_memory((current_state, action, act_expert, done)) 
+                agent.update_replay_memory((current_state, action, act_expert, done, data)) 
                 break
 
         # End of episode - destroy agents
         for actor in env.actor_list:
             actor.destroy()
 
-    # # Set termination flag for training thread and wait for it to finish
-    # agent.terminate = True
-    # trainer_thread.join()#将调用join的线程优先执行，当前正在执行的线程阻塞，直到调用join方法的线程执行完毕或者被打断，主要用于线程之间的交互。
+    # Set termination flag for training thread and wait for it to finish
+    agent.terminate = True
+    trainer_thread.join()#将调用join的线程优先执行，当前正在执行的线程阻塞，直到调用join方法的线程执行完毕或者被打断，主要用于线程之间的交互。
+    if SAVE:
+        state = {'model':agent.state_dict(), 'optimizer':agent.actor_optimizer.state_dict(), 'epoch': episode}
+        torch.save(state, path)
 
     env.world.apply_settings(Original_settings)
