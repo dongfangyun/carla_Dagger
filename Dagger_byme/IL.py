@@ -97,12 +97,12 @@ class Policynet_cat_fc_pro(nn.Module):
         self.conv_fc1 = nn.Sequential(
             nn.Linear(int(64 * (IM_HEIGHT/8) * (IM_WIDTH/8)), 64),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.5),
         )
         self.conv_fc2 = nn.Sequential(
             nn.Linear(64, 32),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.5),
         )
 
         # attributes全连接层
@@ -110,49 +110,49 @@ class Policynet_cat_fc_pro(nn.Module):
         self.fc1 = nn.Sequential(
             nn.Linear(20, 64),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.5),
         )
         self.fc2 = nn.Sequential(
             nn.Linear(64, 32),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.5),
         )
         self.fc3 = nn.Sequential(
             nn.Linear(32, 32),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.5),
         )
         
         # 拼接后的全连接层 32 + 32 = 64 --> 32 -->16 -->2
         self.cat_fc1 = nn.Sequential(
             nn.Linear(64, 32),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.5),
         )
         self.cat_fc2 = nn.Sequential(
             nn.Linear(32, 32),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.5),
         )
         self.cat_fc3 = nn.Sequential(
             nn.Linear(32, 32),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.5),
         )
         self.cat_fc4 = nn.Sequential(
             nn.Linear(32, 16),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.5),
         )
         self.cat_fc5 = nn.Sequential(
             nn.Linear(16, 16),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.5),
         )
         self.cat_fc6 = nn.Sequential(
             nn.Linear(16, 16),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.5),
             nn.Linear(16, 2), 
             nn.Tanh()
         )
@@ -184,9 +184,98 @@ class Policynet_cat_fc_pro(nn.Module):
         return cat_fc6_out # (batch, 2)
 
 
-# class Policynet_bn_attributes(nn.Module): # 将attributes输入后先进行归一化
+# class Policynet_att_fc(nn.Module): # 拼接后多加全连接效果不行，试试 attributes 多加点全连接层学习，
 #     def __init__(self, IM_HEIGHT, IM_WIDTH):
-#         super(Policynet_bn_attributes, self).__init__() 
+#         super(Policynet_att_fc, self).__init__() 
+#         # images的卷积层+全连接层
+#         self.conv1 = nn.Sequential(
+#             # nn.BatchNorm2d(7),
+#             nn.Conv2d(6, 32, kernel_size=5, stride=1, padding=2),
+#             nn.ReLU(),
+#             nn.MaxPool2d(2),
+#         )
+#         self.conv2 = nn.Sequential(
+#             # nn.BatchNorm2d(32),
+#             nn.Conv2d(32, 32, kernel_size=5, stride=1, padding=2),
+#             nn.ReLU(),
+#             nn.MaxPool2d(2),
+#         )
+#         self.conv3 = nn.Sequential(
+#             # nn.BatchNorm2d(32),
+#             nn.Conv2d(32, 64, kernel_size=5, stride=1, padding=2),
+#             nn.ReLU(),
+#             nn.MaxPool2d(2),
+#             # nn.BatchNorm2d(64),
+#         )
+#         self.conv_fc1 = nn.Sequential(
+#             nn.Linear(int(64 * (IM_HEIGHT/8) * (IM_WIDTH/8)), 64),
+#             nn.ReLU(),
+#             nn.Dropout(0.5),
+#         )
+#         self.conv_fc2 = nn.Sequential(
+#             nn.Linear(64, 32),
+#             nn.ReLU(),
+#             nn.Dropout(0.5),
+#         )
+
+#         # attributes全连接层
+#         self.bn1 = nn.BatchNorm1d(20)
+#         self.fc1 = nn.Sequential(
+#             nn.Linear(20, 64),
+#             nn.ReLU(),
+#             nn.Dropout(0.5),
+#         )
+#         self.fc2 = nn.Sequential(
+#             nn.Linear(64, 32),
+#             nn.ReLU(),
+#             nn.Dropout(0.5),
+#         )
+#         self.fc3 = nn.Sequential(
+#             nn.Linear(32, 32),
+#             nn.ReLU(),
+#             nn.Dropout(0.5),
+#         )
+        
+#         # 拼接后的全连接层 32 + 32 = 64 --> 32 -->16 -->2
+#         self.cat_fc1 = nn.Sequential(
+#             nn.Linear(64, 32),
+#             nn.ReLU(),
+#             nn.Dropout(0.5),
+#         )
+#         self.cat_fc2 = nn.Sequential(
+#             nn.Linear(32, 16),
+#             nn.ReLU(),
+#             nn.Dropout(0.5),
+#             nn.Linear(16, 2), 
+#             nn.Tanh()
+#         )
+
+#     def forward(self, images, attributes):
+#         conv1_out = self.conv1(images) 
+#         conv2_out = self.conv2(conv1_out)
+#         conv3_out = self.conv3(conv2_out)
+#         conv3_res = conv3_out.reshape(conv3_out.size(0), -1) # --> (76800)
+#         conv_fc1_out = self.conv_fc1(conv3_res) # 76800 --> (64)
+#         conv_fc2_out = self.conv_fc2(conv_fc1_out) # (32)
+#         # print("conv_fc2_out", conv_fc2_out.shape) #torch.Size([64, 32])
+
+#         attributes = self.bn1(attributes) # 将20个特征先批归一化
+#         fc1_out = self.fc1(attributes) # 20 --> 64
+#         fc2_out = self.fc2(fc1_out) # 64 --> 32
+#         fc3_out = self.fc3(fc2_out) # 32 --> 32
+#         # print("fc3_out", fc3_out.shape) # torch.Size([64, 32])
+
+#         cat = torch.cat(( conv_fc2_out, fc3_out), 1) # 32 + 32 = 64 --> 32
+#         # print("cat", cat.shape) # torch.Size([64, 64])
+#         cat_fc1_out = self.cat_fc1(cat) # 32 --> 16
+#         cat_fc2_out = self.cat_fc2(cat_fc1_out) # 16 --> 2 
+
+#         return cat_fc2_out # (batch, 2)
+    
+
+# class Policynet(nn.Module): # 将attributes输入后先进行归一化
+#     def __init__(self, IM_HEIGHT, IM_WIDTH):
+#         super(Policynet, self).__init__() 
 #         # images的卷积层+全连接层
 #         self.conv1 = nn.Sequential(
 #             # nn.BatchNorm2d(7),
@@ -286,7 +375,7 @@ writer = SummaryWriter("./logs_IL_traning")
 
 total_train_step = 0
 total_test_step = 0
-epoch = 300
+epoch = 600
 batch_size = 64
 
 weight_loss_steer = 100

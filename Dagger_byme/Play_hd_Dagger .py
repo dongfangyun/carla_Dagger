@@ -26,7 +26,7 @@ import carla
 
 from Dagger_CarEnv import CarEnv, IM_WIDTH, IM_HEIGHT,camera_queue1, camera_queue2 
 
-log_dir = r"IL_experience_model\\model_Sat_Jul_27_20_17_05_2024.pth"
+log_dir = r"IL_experience_model\\model_Sun_Jul_28_16_43_50_2024.pth"
 
 SHOW_PREVIEW = False # 训练时播放摄像镜头
 LOG = False # 训练时向tensorboard中写入记录
@@ -40,9 +40,9 @@ if LOG:
     writer = SummaryWriter("./logs_play_hd_DDPG")
 
 
-class Policynet_bn_attributes(nn.Module): # 将attributes输入后先进行归一化
+class Policynet_cat_fc_pro(nn.Module):
     def __init__(self, IM_HEIGHT, IM_WIDTH):
-        super(Policynet_bn_attributes, self).__init__() 
+        super(Policynet_cat_fc_pro, self).__init__() 
         # images的卷积层+全连接层
         self.conv1 = nn.Sequential(
             # nn.BatchNorm2d(7),
@@ -66,12 +66,12 @@ class Policynet_bn_attributes(nn.Module): # 将attributes输入后先进行归�
         self.conv_fc1 = nn.Sequential(
             nn.Linear(int(64 * (IM_HEIGHT/8) * (IM_WIDTH/8)), 64),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.5),
         )
         self.conv_fc2 = nn.Sequential(
             nn.Linear(64, 32),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.5),
         )
 
         # attributes全连接层
@@ -79,29 +79,49 @@ class Policynet_bn_attributes(nn.Module): # 将attributes输入后先进行归�
         self.fc1 = nn.Sequential(
             nn.Linear(20, 64),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.5),
         )
         self.fc2 = nn.Sequential(
             nn.Linear(64, 32),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.5),
         )
         self.fc3 = nn.Sequential(
             nn.Linear(32, 32),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.5),
         )
         
         # 拼接后的全连接层 32 + 32 = 64 --> 32 -->16 -->2
         self.cat_fc1 = nn.Sequential(
             nn.Linear(64, 32),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.5),
         )
         self.cat_fc2 = nn.Sequential(
+            nn.Linear(32, 32),
+            nn.ReLU(),
+            # nn.Dropout(0.5),
+        )
+        self.cat_fc3 = nn.Sequential(
+            nn.Linear(32, 32),
+            nn.ReLU(),
+            # nn.Dropout(0.5),
+        )
+        self.cat_fc4 = nn.Sequential(
             nn.Linear(32, 16),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.5),
+        )
+        self.cat_fc5 = nn.Sequential(
+            nn.Linear(16, 16),
+            nn.ReLU(),
+            # nn.Dropout(0.5),
+        )
+        self.cat_fc6 = nn.Sequential(
+            nn.Linear(16, 16),
+            nn.ReLU(),
+            # nn.Dropout(0.5),
             nn.Linear(16, 2), 
             nn.Tanh()
         )
@@ -125,8 +145,12 @@ class Policynet_bn_attributes(nn.Module): # 将attributes输入后先进行归�
         # print("cat", cat.shape) # torch.Size([64, 64])
         cat_fc1_out = self.cat_fc1(cat) # 32 --> 16
         cat_fc2_out = self.cat_fc2(cat_fc1_out) # 16 --> 2 
+        cat_fc3_out = self.cat_fc3(cat_fc2_out) # 
+        cat_fc4_out = self.cat_fc4(cat_fc3_out) # 
+        cat_fc5_out = self.cat_fc5(cat_fc4_out) # 
+        cat_fc6_out = self.cat_fc6(cat_fc5_out) # 
 
-        return cat_fc2_out # (batch, 2)
+        return cat_fc6_out # (batch, 2)
     
 
 if torch.cuda.device_count() > 1:
@@ -137,7 +161,7 @@ else:
 class Dagger:
     def __init__(self,lr_actor=1e-4):
 
-        self.actor = Policynet_bn_attributes(IM_HEIGHT, IM_WIDTH).to("cuda:0")    
+        self.actor = Policynet_cat_fc_pro(IM_HEIGHT, IM_WIDTH).to("cuda:0")    
 
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=lr_actor) 
 
