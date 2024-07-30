@@ -1511,7 +1511,7 @@ def game_loop(args):
         while True:
             if args.sync:
                 sim_world.tick()
-            clock.tick_busy_loop(60)
+            clock.tick_busy_loop(60) # 锁上限60帧
             if controller.parse_events(client, world, clock, args.sync): # destination最开始在初始化中，此处方法不会刷新目的地
                 return
 

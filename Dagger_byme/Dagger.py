@@ -167,7 +167,7 @@ def caculate_reward(dist_to_start, dist_to_start_old, kmh_player, done, inva_lan
     return reward
 
 class Dagger:
-    def __init__(self,lr_actor=5e-5):
+    def __init__(self,lr_actor=1e-5):
 
         self.actor = Policynet_cat_fc_pro(IM_HEIGHT, IM_WIDTH).to("cuda:0")
 
@@ -274,18 +274,23 @@ class Dagger:
                 if LOG:
                     writer.add_scalar("actor_loss_{}".format(now), actor_loss, total_train_step)
 
+                if total_train_step % 10000 == 0:
+                    if SAVE:
+                        state = {'model':agent.actor.state_dict(), 'optimizer':agent.actor_optimizer.state_dict(), 'epoch': episode}
+                        torch.save(state, path)
+
 if __name__ == '__main__':
 
     now = time.ctime(time.time())
     now = now.replace(" ","_").replace(":", "_")
 
-    SHOW_PREVIEW = True # 训练时播放摄像镜头
+    SHOW_PREVIEW = False # 训练时播放摄像镜头
 
     LOG = True # 训练时向tensorboard中写入记录
     if LOG:
         writer = SummaryWriter("./logs_Dagger")
 
-    SAVE = False # 保存模型
+    SAVE = True # 保存模型
     if SAVE:
         if not os.path.isdir('./Dagger_model'):
             os.makedirs('./Dagger_model')
@@ -302,7 +307,7 @@ if __name__ == '__main__':
     REPLAY_MEMORY_SIZE = 2000 # 经验回放池最大容量——足以容纳预训练/或不需要
     MIN_REPLAY_MEMORY_SIZE = 100# 抽样训练开始时经验回放池的最小样本数
     MINIBATCH_SIZE = 16 # 每次从经验回放池的采样数（作为训练的同一批次）   此大小影响运算速度/显存
-    EPISODES = 1000 # 游戏进行总次数
+    EPISODES = 10000 # 游戏进行总次数
 
     # Create agent and environment
     env = CarEnv()    
@@ -401,7 +406,7 @@ if __name__ == '__main__':
     agent.terminate = True
     trainer_thread.join()#将调用join的线程优先执行，当前正在执行的线程阻塞，直到调用join方法的线程执行完毕或者被打断，主要用于线程之间的交互。
     if SAVE:
-        state = {'model':agent.state_dict(), 'optimizer':agent.actor_optimizer.state_dict(), 'epoch': episode}
+        state = {'model':agent.actor.state_dict(), 'optimizer':agent.actor_optimizer.state_dict(), 'epoch': episode}
         torch.save(state, path)
 
     env.world.apply_settings(Original_settings)

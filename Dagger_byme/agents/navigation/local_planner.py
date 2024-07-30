@@ -216,7 +216,7 @@ class LocalPlanner(object):
 
         self._stop_waypoint_creation = stop_waypoint_creation
 
-    def run_step(self, debug=False):
+    def run_step(self, debug=False): # debug=True 画一下目标路点看看问题
         """
         Execute one step of local planning which involves running the longitudinal and lateral PID controllers to
         follow the waypoints trajectory.
@@ -237,7 +237,7 @@ class LocalPlanner(object):
         self._min_distance = self._base_min_distance + self._distance_ratio * vehicle_speed
 
         num_waypoint_removed = 0
-        for waypoint, _ in self._waypoints_queue:
+        for waypoint, _ in self._waypoints_queue: # 设定个最小距离，小于这个距离的路点从队列中删除
 
             if len(self._waypoints_queue) - num_waypoint_removed == 1:
                 min_distance = 1  # Don't remove the last waypoint until very close by
@@ -249,7 +249,7 @@ class LocalPlanner(object):
             else:
                 break
 
-        if num_waypoint_removed > 0:
+        if num_waypoint_removed > 0: # 移了几个较近点，就从路点队列里弹出几个。 如果没有合理移动，则不会弹出
             for _ in range(num_waypoint_removed):
                 self._waypoints_queue.popleft()
 
@@ -262,11 +262,28 @@ class LocalPlanner(object):
             control.hand_brake = False
             control.manual_gear_shift = False
         else: # 如果小车还没跑到目的地，那么我们就判断一下装短期全局路线的deque是不是还有目标点存在，如果没有，那就从waypoint_queue里不停pop目标点出来，装到waypoint_buffer里。
-            self.target_waypoint, self.target_road_option = self._waypoints_queue[0]
+
+            # # print(self._waypoints_queue[0]) # tulple(waypoint<>)
+            # if veh_location.distance(self._waypoints_queue[0][0].transform.location) > 10: # 先清除队列中过远的垃圾异常点: 垃圾点不只是第一个
+            #     self._waypoints_queue.popleft()
+
+            print(veh_location.distance(self._waypoints_queue[0][0].transform.location), veh_location.distance(self._waypoints_queue[1][0].transform.location), veh_location.distance(self._waypoints_queue[2][0].transform.location), len(self._waypoints_queue)) # 有可能两三帧队列 还是一模一样，因为未冲到下一个点附近。 除了第一个点后续的点距离远大于10.判断后续路点序列生成出了问题。
+
+            # print(self._waypoints_queue[0][0].transform.location.x, veh_location.distance(self._waypoints_queue[0][0].transform.location )) # 能确定生成的序列不对
+
+            self.target_waypoint, self.target_road_option = self._waypoints_queue[0] 
+            # 原因在于：self._waypoints_queue[0]始终不变
             control = self._vehicle_controller.run_step(self._target_speed, self.target_waypoint) # class VehiclePIDController()
 
         if debug:
             draw_waypoints(self._vehicle.get_world(), [self.target_waypoint], 1.0)
+            print(self.target_waypoint) # 问题在这。胡跑的时候self.target_waypoint不变：Location(x=-0.036640, y=13.183878, z=0.000000) 或 Location(x=0.445544, y=13.185217, z=0.000000),总是这两个
+
+        self._vehicle.get_world().debug.draw_string(self.target_waypoint.transform.location, 
+                                "0", 
+                                draw_shadow=False,
+                                color=carla.Color(r=0, g=255, b=255), 
+                                life_time=2.0)
 
         return control
 

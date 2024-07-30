@@ -26,7 +26,7 @@ import carla
 
 from Dagger_CarEnv import CarEnv, IM_WIDTH, IM_HEIGHT,camera_queue1, camera_queue2 
 
-log_dir = r"IL_experience_model\\model_Sun_Jul_28_16_43_50_2024.pth"
+log_dir = r"Dagger_model\\model_Tue_Jul_30_12_57_30_2024.pth"
 
 SHOW_PREVIEW = False # 训练时播放摄像镜头
 LOG = False # 训练时向tensorboard中写入记录
@@ -165,12 +165,12 @@ class Dagger:
 
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=lr_actor) 
 
-        if os.path.exists(log_dir): # 模仿学习模型
-            checkpoint = torch.load(log_dir)
-            self.actor.load_state_dict(checkpoint['model'])
-            self.actor_optimizer.load_state_dict(checkpoint['optimizer'])
-            start_epoch = checkpoint['epoch']
-            print('加载 epoch {} 成功！'.format(start_epoch))    
+        # if os.path.exists(log_dir): # 模仿学习模型 加if，路径写错，直接跳过读取了。相当于在用个初始网络在跑
+        checkpoint = torch.load(log_dir)
+        self.actor.load_state_dict(checkpoint['model'])
+        self.actor_optimizer.load_state_dict(checkpoint['optimizer'])
+        start_epoch = checkpoint['epoch']
+        print('加载 epoch {} 成功！'.format(start_epoch))    
 
         # if os.path.exists(log_dir): # 强化学习模型
         #     self.actor = torch.load(log_dir)
@@ -250,7 +250,7 @@ if __name__ == '__main__':
         # dis_to_start_old = 0
         # current_state = np.concatenate((i3_1, i3_2), axis=2) # （h, w, 3）= (480, 640, 3+3+1 = 7)
 
-        action = torch.tensor([[0.1, 0.1]])  # torch.Size([1, 2]) # 给个初始动作其实就可以了
+        action = torch.tensor([[0.0, 0.0]])  # torch.Size([1, 2]) # 给个初始动作其实就可以了
         # location = np.array([0, 0, 0]) # (3,)
         # start_point = np.array([0, 0, 0]) # (3,)
         # destination = np.array([0, 0, 0]) # (3,)
@@ -306,7 +306,8 @@ if __name__ == '__main__':
             # print(data)
             data = torch.tensor(data).cuda().float()
 
-            action = agent.get_action(current_state, data)
+            # action = agent.get_action(current_state, data) # 训练的agent开车鉴赏
+            action = act_expert  # 专家开车鉴赏模式
 
             # 分离损失函数，以便加权损失
             loss_fn_throttle = nn.L1Loss(reduction='mean')
@@ -318,7 +319,8 @@ if __name__ == '__main__':
             loss_steer = loss_fn_steer(action[:, 1], act_expert[:, 1])
             # loss = loss_throttle + weight_loss_steer * loss_steer # 方向盘损失权重放大100倍
 
-            print(action, act_expert, loss_throttle, 100 * loss_steer)
+            # print(action, act_expert)
+            # print(loss_throttle, 100 * loss_steer)
 
             episode_reward += reward
 
@@ -329,6 +331,8 @@ if __name__ == '__main__':
                                                 carla.Rotation(pitch=-90)))
             
             episode_steps += 1
+
+            # print(episode_steps)
 
             if done:
                 break

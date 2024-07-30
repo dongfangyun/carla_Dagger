@@ -104,6 +104,20 @@ class CarEnv:
         self.agent.set_destination(self.destination)
 
     def step(self, action, episode_steps): #action.shape([1,2]):  油门刹车action[0][0]:(-1,1) 方向盘action[0][1]:(-1,1)
+
+        # 到达目的地则自动驾驶控制器自动换个目标点，controller中有传出的初始目的地，默认未done
+        if self.agent.done():  # Check whether the agent has reached its destination
+            self.destination = random.choice(self.world.get_map().get_spawn_points()).location
+            self.agent.set_destination(self.destination)
+            print("The target has been reached, searching for another target")
+
+        # print(self.destination) # 每个epoch中destination很一致，不是目的地的问题
+        
+        # 根据当前这一步执行专家指示
+        self.act_expert = self.agent.run_step() # 专家指导动作 ，这里的指导动作已然有大病  
+        self.act_expert.manual_gear_shift = False
+        self.act_expert = torch.tensor([[self.act_expert.throttle - self.act_expert.brake, self.act_expert.steer]]).cuda()
+
         throttle = float(torch.clip(action[0][0], 0, 1))
         brake = float(torch.abs(torch.clip(action[0][0], -1, 0)))
         
@@ -155,14 +169,9 @@ class CarEnv:
         if episode_steps > PER_EPISODE_max_steps:
             self.done = True
 
-        # 根据当前这一步执行专家指示
-        self.act_expert = self.agent.run_step() # 专家指导动作   
-        self.act_expert.manual_gear_shift = False
-        self.act_expert = torch.tensor([[self.act_expert.throttle - self.act_expert.brake, self.act_expert.steer]]).cuda()
-
         data = [*location, *start_point, *destination, *forward_vector, velocity, *acceleration, *angular_velocity]
 
-        # print(self.done)
+        # print(self.act_expert)
         return  self.done, data, self.act_expert, dist_to_start, self.invation
     
 camera_queue1 = Queue()
