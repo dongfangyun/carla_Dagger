@@ -167,7 +167,7 @@ def caculate_reward(dist_to_start, dist_to_start_old, kmh_player, done, inva_lan
     return reward
 
 class Dagger:
-    def __init__(self,lr_actor=1e-5):
+    def __init__(self,lr_actor=1e-4):
 
         self.actor = Policynet_cat_fc_pro(IM_HEIGHT, IM_WIDTH).to("cuda:0")
 

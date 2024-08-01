@@ -65,6 +65,8 @@ class CarEnv:
         self.location_start = self.transform.location
         self.actor_list.append(self.vehicle)
 
+        self.world.tick() # tick一下，让车落下来，再装其他的，这样获得的信息无误。教训：路径规划初始路点位置错误，车还没下来
+
         #设置sensor摄像头，位置绑定actor车辆. world.tick()后将listen到的数据放入sensor_queue_out队列.
         self.rgb_cam = self.blueprint_library.find('sensor.camera.rgb')
         self.rgb_cam.set_attribute("image_size_x", f"{self.im_width}") # 640
@@ -97,33 +99,13 @@ class CarEnv:
         self.actor_list.append(self.invsensor)
         self.invsensor.listen(lambda event: self.invasion_hist.append(event))
 
-        # 初始布置的expert控制器。重置世界后自动再布置
+        # 初始布置的expert控制器。重置世界后自动再布置。 这里的问题在于安置车辆和安置控制器间隔太短，车辆还没落下来。加个tick试试
         self.agent = BasicAgent(self.vehicle, 30) 
         self.agent.follow_speed_limits(True)
         self.destination = random.choice(self.world.get_map().get_spawn_points()).location
         self.agent.set_destination(self.destination)
 
     def step(self, action, episode_steps): #action.shape([1,2]):  油门刹车action[0][0]:(-1,1) 方向盘action[0][1]:(-1,1)
-
-        # 到达目的地则自动驾驶控制器自动换个目标点，controller中有传出的初始目的地，默认未done
-        if self.agent.done():  # Check whether the agent has reached its destination
-            self.destination = random.choice(self.world.get_map().get_spawn_points()).location
-            self.agent.set_destination(self.destination)
-            print("The target has been reached, searching for another target")
-
-        # print(self.destination) # 每个epoch中destination很一致，不是目的地的问题
-        
-        # 根据当前这一步执行专家指示
-        self.act_expert = self.agent.run_step() # 专家指导动作 ，这里的指导动作已然有大病  
-        self.act_expert.manual_gear_shift = False
-        self.act_expert = torch.tensor([[self.act_expert.throttle - self.act_expert.brake, self.act_expert.steer]]).cuda()
-
-        throttle = float(torch.clip(action[0][0], 0, 1))
-        brake = float(torch.abs(torch.clip(action[0][0], -1, 0)))
-        
-        steer = float(torch.clip(action[0][1], -1, 1))
-
-        self.vehicle.apply_control(carla.VehicleControl(throttle=throttle, steer=steer, brake=brake, reverse=False))
 
         # 车辆当前位置（x,y,z）和方向(三维矢量)
         transform_player = self.vehicle.get_transform()
@@ -151,6 +133,38 @@ class CarEnv:
         # 车辆当前角速度
         angular_velocity_player = self.vehicle.get_angular_velocity()
         angular_velocity = (angular_velocity_player.x, angular_velocity_player.y, angular_velocity_player.z)
+
+
+        # 到达目的地则自动驾驶控制器自动换个目标点，controller中有传出的初始目的地，默认未done
+        if self.agent.done():  # Check whether the agent has reached its destination
+            self.destination = random.choice(self.world.get_map().get_spawn_points()).location
+            self.agent.set_destination(self.destination)
+            print("The target has been reached, searching for another target")
+
+        # 设置智能专家，会修正导航
+        # 矫正专家，如果最近路点与局部路线规划下一个路点lane_id不符，重新规划路线, 目标点不变（不重新取点）。 得排除交叉路口，不然太善变
+        waypoint_nearby = self.world.get_map().get_waypoint(location_player, project_to_road=True, lane_type=(carla.LaneType.Driving | carla.LaneType.Sidewalk))
+        if waypoint_nearby.is_junction:
+            # print("juction!")
+            pass
+        else:
+            if waypoint_nearby.lane_id != self.agent._local_planner._waypoints_queue[0][0].lane_id:
+                self.agent.set_destination(self.destination, start_location=True)
+                # print("计划有变")
+
+        
+        # 根据当前这一步执行专家指示
+        self.act_expert = self.agent.run_step() # 专家指导动作 ，这里的指导动作已然有大病 （已修正）
+        self.act_expert.manual_gear_shift = False
+        self.act_expert = torch.tensor([[self.act_expert.throttle - self.act_expert.brake, self.act_expert.steer]]).cuda()
+
+        throttle = float(torch.clip(action[0][0], 0, 1))
+        brake = float(torch.abs(torch.clip(action[0][0], -1, 0)))
+        
+        steer = float(torch.clip(action[0][1], -1, 1))
+
+        self.vehicle.apply_control(carla.VehicleControl(throttle=throttle, steer=steer, brake=brake, reverse=False))
+
 
         # 检测是否跨越车道线
         if len(self.invasion_hist) != 0:

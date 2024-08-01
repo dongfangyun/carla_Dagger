@@ -306,8 +306,8 @@ if __name__ == '__main__':
             # print(data)
             data = torch.tensor(data).cuda().float()
 
-            # action = agent.get_action(current_state, data) # 训练的agent开车鉴赏
-            action = act_expert  # 专家开车鉴赏模式
+            action = agent.get_action(current_state, data) # 训练的agent开车鉴赏
+            # action = act_expert  # 专家开车鉴赏模式
 
             # 分离损失函数，以便加权损失
             loss_fn_throttle = nn.L1Loss(reduction='mean')
@@ -332,7 +332,7 @@ if __name__ == '__main__':
             
             episode_steps += 1
 
-            # print(episode_steps)
+            print(episode_steps)
 
             if done:
                 break

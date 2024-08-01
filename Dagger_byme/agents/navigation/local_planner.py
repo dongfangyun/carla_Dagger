@@ -133,7 +133,10 @@ class LocalPlanner(object):
                                                         max_steering=self._max_steer)
 
         # Compute the current vehicle waypoint
-        current_waypoint = self._map.get_waypoint(self._vehicle.get_location())
+        current_waypoint = self._map.get_waypoint(self._vehicle.get_location()) # 这一步可能get的有问题
+        # print(self._vehicle.get_location()) # 问题所在， _init_controller太早了，车都还没出来
+        # print(current_waypoint)
+
         self.target_waypoint, self.target_road_option = (current_waypoint, RoadOption.LANEFOLLOW)
         self._waypoints_queue.append((self.target_waypoint, self.target_road_option))
 
@@ -158,7 +161,7 @@ class LocalPlanner(object):
         """
         self._follow_speed_limits = value
 
-    def _compute_next_waypoints(self, k=1):
+    def _compute_next_waypoints(self, k=1): # 目前是这一步塞100个路点有问题
         """
         Add new waypoints to the trajectory queue.
 
@@ -169,25 +172,25 @@ class LocalPlanner(object):
         available_entries = self._waypoints_queue.maxlen - len(self._waypoints_queue)
         k = min(available_entries, k)
 
-        for _ in range(k):
+        for _ in range(k): # 运行100次，每次根据最后一个点再添加一个最后路点
             last_waypoint = self._waypoints_queue[-1][0]
-            next_waypoints = list(last_waypoint.next(self._sampling_radius))
+            next_waypoints = list(last_waypoint.next(self._sampling_radius)) # self._sampling_radius = 2.0.最后一个路点范围2米内的之后的所有路点列表
 
             if len(next_waypoints) == 0:
                 break
             elif len(next_waypoints) == 1:
                 # only one option available ==> lanefollowing
                 next_waypoint = next_waypoints[0]
-                road_option = RoadOption.LANEFOLLOW
+                road_option = RoadOption.LANEFOLLOW # RoadOption.LANEFOLLOW = 4
             else:
-                # random choice between the possible options
+                # random choice between the possible options 之后的2m内的路点随便挑一个
                 road_options_list = _retrieve_options(
-                    next_waypoints, last_waypoint)
+                    next_waypoints, last_waypoint) # 返回最后一个路点和next_waypoints间一一对应的连接关系的列表（直， 左， 右）
                 road_option = random.choice(road_options_list)
                 next_waypoint = next_waypoints[road_options_list.index(
                     road_option)]
 
-            self._waypoints_queue.append((next_waypoint, road_option))
+            self._waypoints_queue.append((next_waypoint, road_option)) # 添加下一个点及其与该点的连接关系 （直， 左， 右）
 
     def set_global_plan(self, current_plan, stop_waypoint_creation=True, clean_queue=True):
         """
@@ -228,7 +231,7 @@ class LocalPlanner(object):
             self._target_speed = self._vehicle.get_speed_limit()
 
         # Add more waypoints too few in the horizon
-        if not self._stop_waypoint_creation and len(self._waypoints_queue) < self._min_waypoint_queue_length:
+        if not self._stop_waypoint_creation and len(self._waypoints_queue) < self._min_waypoint_queue_length: # 小于100个点就往里面填100个点
             self._compute_next_waypoints(k=self._min_waypoint_queue_length)
 
         # Purge the queue of obsolete waypoints
@@ -267,13 +270,15 @@ class LocalPlanner(object):
             # if veh_location.distance(self._waypoints_queue[0][0].transform.location) > 10: # 先清除队列中过远的垃圾异常点: 垃圾点不只是第一个
             #     self._waypoints_queue.popleft()
 
-            print(veh_location.distance(self._waypoints_queue[0][0].transform.location), veh_location.distance(self._waypoints_queue[1][0].transform.location), veh_location.distance(self._waypoints_queue[2][0].transform.location), len(self._waypoints_queue)) # 有可能两三帧队列 还是一模一样，因为未冲到下一个点附近。 除了第一个点后续的点距离远大于10.判断后续路点序列生成出了问题。
+            # print(veh_location.distance(self._waypoints_queue[0][0].transform.location), veh_location.distance(self._waypoints_queue[1][0].transform.location), veh_location.distance(self._waypoints_queue[2][0].transform.location), len(self._waypoints_queue)) # 有可能两三帧队列 还是一模一样，因为未冲到下一个点附近。 路点序列生成出了问题。
 
             # print(self._waypoints_queue[0][0].transform.location.x, veh_location.distance(self._waypoints_queue[0][0].transform.location )) # 能确定生成的序列不对
 
             self.target_waypoint, self.target_road_option = self._waypoints_queue[0] 
             # 原因在于：self._waypoints_queue[0]始终不变
             control = self._vehicle_controller.run_step(self._target_speed, self.target_waypoint) # class VehiclePIDController()
+
+            # 问题最终总结！！！！！！！！！！！！：安置车辆后未tick（）便初始化控制器，车辆还没落地上，得到的初始位置是错误的
 
         if debug:
             draw_waypoints(self._vehicle.get_world(), [self.target_waypoint], 1.0)

@@ -365,7 +365,7 @@ class World(object):
         self.sensor2.listen(self.camera_queue2.put)
 
 
-        if self.sync:
+        if self.sync: # 这一步极重要！！！！！！！！！！！！！！！！！！！设置好后tick(),使车就为。之后获取的路径规划初始位置无误
             self.world.tick()
         else:
             self.world.wait_for_tick()
@@ -1519,31 +1519,6 @@ def game_loop(args):
             world.render(display)
             pygame.display.flip()
 
-            # 到达目的地则自动驾驶控制器自动换个目标点，controller中有传出的初始目的地，默认未done
-            if controller.agent.done():  # Check whether the agent has reached its destination
-                controller.destination = random.choice(world.spawn_points).location
-                controller.agent.set_destination(controller.destination)
-                world.hud.notification("Target reached", seconds=4.0)
-                print("The target has been reached, searching for another target")
-
-            ################################################################视角相机
-            current_state1 = world.camera_queue1.get() # <class 'carla.libcarla.Image'> Image(frame=154824, timestamp=1589.824231, size=640x480)
-            i_1 = np.array(current_state1.raw_data) #(1228800,) = 640 X 480 X 4   	.raw_data：Array of BGRA 32-bit pixels
-            i2_1 = i_1.reshape((world.im_height, world.im_width, 4))
-            i3_1 = i2_1[:, :, :3] # （h, w, 3）= (480, 640, 3)
-
-            cv2.imshow("i3_1", i3_1)
-            cv2.waitKey(1)       
-
-            current_state2 = world.camera_queue2.get() # <class 'carla.libcarla.Image'> Image(frame=154824, timestamp=1589.824231, size=640x480)
-            current_state2.convert(carla.ColorConverter.CityScapesPalette)
-            i_2 = np.array(current_state2.raw_data) #(1228800,) = 640 X 480 X 4
-            i2_2 = i_2.reshape((world.im_height, world.im_width, 4))
-            i3_2 = i2_2[:, :, :3] # （h, w, 3）= (480, 640, 3)  # （h, w, 3）= (480, 640, 3)
-
-            cv2.imshow("i3_2", i3_2)
-            cv2.waitKey(1)
-
             ##################################################################################################当前信息
             # 控制器信息
             control_palyer = controller.control_player # 手动（玩家）控制输入
@@ -1581,7 +1556,57 @@ def game_loop(args):
             angular_velocity = (angular_velocity_player.x, angular_velocity_player.y, angular_velocity_player.z)
 
 
-            # if world.lane_invasion_sensor._on_invasion:
+            ################################################################最近way point
+            waypoint_nearby = world.map.get_waypoint(location_player, project_to_road=True, lane_type=(carla.LaneType.Driving | carla.LaneType.Sidewalk))
+            # # print("waypoint:", waypoint_nearby)
+            # # print("waypoint:", waypoint_nearby.id , waypoint_nearby)
+            # location_point = waypoint_nearby.transform.location
+            # print("waypoint.transform.location:", location_point)
+            # dis_center = location_player.distance(location_point)
+            # print("dis_center:", dis_center)
+            # #绘制点位
+            # world.world.debug.draw_string(waypoint_nearby.transform.location, 
+            #                         "0", 
+            #                         draw_shadow=False,
+            #                         color=carla.Color(r=0, g=255, b=0), 
+            #                         life_time=60.0)
+
+            # 到达目的地则自动驾驶控制器自动换个目标点，controller中有传出的初始目的地，默认未done
+            if controller.agent.done():  # Check whether the agent has reached its destination
+                controller.destination = random.choice(world.spawn_points).location
+                controller.agent.set_destination(controller.destination)
+                world.hud.notification("Target reached", seconds=4.0)
+                print("The target has been reached, searching for another target")
+
+            # 矫正专家，如果最近路点与局部路线规划下一个路点lane_id不符，重新规划路线, 目标点不变（不重新取点）。 得排除交叉路口，不然太善变
+            if waypoint_nearby.is_junction:
+                print("juction!")
+            else:
+                if waypoint_nearby.lane_id != controller.agent._local_planner._waypoints_queue[0][0].lane_id:
+                    controller.agent.set_destination(controller.destination, start_location=True)
+                    print("计划有变")
+
+            ################################################################视角相机
+            current_state1 = world.camera_queue1.get() # <class 'carla.libcarla.Image'> Image(frame=154824, timestamp=1589.824231, size=640x480)
+            i_1 = np.array(current_state1.raw_data) #(1228800,) = 640 X 480 X 4   	.raw_data：Array of BGRA 32-bit pixels
+            i2_1 = i_1.reshape((world.im_height, world.im_width, 4))
+            i3_1 = i2_1[:, :, :3] # （h, w, 3）= (480, 640, 3)
+
+            cv2.imshow("i3_1", i3_1)
+            cv2.waitKey(1)       
+
+            current_state2 = world.camera_queue2.get() # <class 'carla.libcarla.Image'> Image(frame=154824, timestamp=1589.824231, size=640x480)
+            current_state2.convert(carla.ColorConverter.CityScapesPalette)
+            i_2 = np.array(current_state2.raw_data) #(1228800,) = 640 X 480 X 4
+            i2_2 = i_2.reshape((world.im_height, world.im_width, 4))
+            i3_2 = i2_2[:, :, :3] # （h, w, 3）= (480, 640, 3)  # （h, w, 3）= (480, 640, 3)
+
+            cv2.imshow("i3_2", i3_2)
+            cv2.waitKey(1)
+
+
+
+            ########################################################### if world.lane_invasion_sensor._on_invasion:
             #     print("invasion the lane")
             inva_lane = world.lane_invasion_sensor.get_invasion_history() #跨道
 
@@ -1625,21 +1650,6 @@ def game_loop(args):
             world.step_tick += 1
             # print(world.step_tick)
 
-            ################################################################最近way point
-            # waypoint_nearby = world.map.get_waypoint(location_player,project_to_road=True, lane_type=(carla.LaneType.Driving | carla.LaneType.Sidewalk))
-            # # print("waypoint:", waypoint_nearby)
-            # # print("waypoint:", waypoint_nearby.id , waypoint_nearby)
-            # location_point = waypoint_nearby.transform.location
-            # print("waypoint.transform.location:", location_point)
-            # dis_center = location_player.distance(location_point)
-            # print("dis_center:", dis_center)
-            ##绘制点位
-            # world.world.debug.draw_string(waypoint_nearby.transform.location, 
-            #                         "0", 
-            #                         draw_shadow=False,
-            #                         color=carla.Color(r=0, g=255, b=0), 
-            #                         life_time=60.0)
-
             #################################################################按step自动重置世界功能
             if controller.step_reset == True:
                 controller.re_world_step(world, world.step_tick, 300) # step_lenth = 300，300帧重置一次。重新安置自动巡航agent在此中
@@ -1649,7 +1659,8 @@ def game_loop(args):
             # print(control_auto)
             # print(control_actual)
             # print(data, "\n")
-            print("step:",world.step_tick, "reward",reward)
+            # print("step:",world.step_tick, "reward",reward)
+            print(waypoint_nearby.lane_id)
 
 
 

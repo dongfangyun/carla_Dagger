@@ -148,18 +148,19 @@ class BasicAgent(object):
             :param end_location (carla.Location): final location of the route
             :param start_location (carla.Location): starting location of the route
         """
-        if not start_location:
+        if not start_location: # 默认 ，将之前计划的下一个路点衔接作为起始点
             start_location = self._local_planner.target_waypoint.transform.location
             clean_queue = True
-        else:
+        else: # 从当前的车辆位置坐标作为起始点
             start_location = self._vehicle.get_location()
-            clean_queue = False
+            # clean_queue = False
+            clean_queue = True # 这里选择清空之前的路径，不然还往旧点跑
 
         start_waypoint = self._map.get_waypoint(start_location)
         end_waypoint = self._map.get_waypoint(end_location)
 
-        route_trace = self.trace_route(start_waypoint, end_waypoint)
-        self._local_planner.set_global_plan(route_trace, clean_queue=clean_queue)
+        route_trace = self.trace_route(start_waypoint, end_waypoint) # 获得一堆路径点作为列表
+        self._local_planner.set_global_plan(route_trace, clean_queue=clean_queue) # 看用不用保留原来的剩下的路径列表，默认清空
 
     def set_global_plan(self, plan, stop_waypoint_creation=True, clean_queue=True):
         """
@@ -249,7 +250,7 @@ class BasicAgent(object):
         if not path:
             print("WARNING: Ignoring the lane change as no path was found")
 
-        self.set_global_plan(path)
+        self.set_global_plan(path) # 变道之后清空原先的路点列表，跑变道后的新路点列表
 
     def _affected_by_traffic_light(self, lights_list=None, max_distance=None):
         """
