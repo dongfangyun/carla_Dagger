@@ -26,7 +26,10 @@ import carla
 
 from Dagger_CarEnv import CarEnv, IM_WIDTH, IM_HEIGHT,camera_queue1, camera_queue2 
 
-log_dir = r"Dagger_model\\model_Tue_Jul_30_12_57_30_2024.pth"
+# log_dir = r"Dagger_model/model_Tue_Jul_30_12_57_30_2024.pth"
+# log_dir = r"IL_experience_model/model_Sun_Jul_28_16_43_50_2024.pth"
+# log_dir = r"Dagger_model/model_Wed_Jul_31_21_38_58_2024.pth"
+log_dir = r"Dagger_model/model_Thu_Aug__1_22_49_52_2024.pth"
 
 SHOW_PREVIEW = False # 训练时播放摄像镜头
 LOG = False # 训练时向tensorboard中写入记录
@@ -154,7 +157,7 @@ class Policynet_cat_fc_pro(nn.Module):
     
 
 if torch.cuda.device_count() > 1:
-    device = torch.device("cuda:1") 
+    device = torch.device("cuda:0") 
 else:
     device = torch.device("cuda:0")
 

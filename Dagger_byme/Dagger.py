@@ -145,7 +145,7 @@ class Policynet_cat_fc_pro(nn.Module):
         return cat_fc6_out # (batch, 2)
 
 if torch.cuda.device_count() > 1:
-    device = torch.device("cuda:1") 
+    device = torch.device("cuda:0") 
 else:
     device = torch.device("cuda:0")
 
@@ -171,20 +171,19 @@ class Dagger:
 
         self.actor = Policynet_cat_fc_pro(IM_HEIGHT, IM_WIDTH).to("cuda:0")
 
-        if torch.cuda.device_count() > 1:
-            self.actor= nn.DataParallel(self.actor, device_ids = [0,1], output_device=device)
+        # if torch.cuda.device_count() > 1:
+        #     self.actor= nn.DataParallel(self.actor, device_ids = [0,1], output_device=device)
 
         #只更新主网络的参数
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=lr_actor) 
 
         #启动预训练模型
         if TRAINED_MODEL:
-            if os.path.exists(trained_model_dir):
-                checkpoint = torch.load(trained_model_dir)
-                self.actor.load_state_dict(checkpoint['model'])
-                self.actor_optimizer.load_state_dict(checkpoint['optimizer'])
-                start_epoch = checkpoint['epoch']
-                print('加载 epoch {} 结果成功！'.format(start_epoch))   
+            checkpoint = torch.load(trained_model_dir )
+            self.actor.load_state_dict(checkpoint['model'])
+            self.actor_optimizer.load_state_dict(checkpoint['optimizer'])
+            start_epoch = checkpoint['epoch']
+            print('加载 epoch {} 结果成功！'.format(start_epoch))   
         
         self.replay_memory = deque(maxlen=REPLAY_MEMORY_SIZE) #上限12000的经验回放池队列
         self.terminate = False #没结束循环训练，当全部游戏次数跑完后此处会改为True，停止进程中的采样训练
@@ -297,17 +296,18 @@ if __name__ == '__main__':
         path='./Dagger_model/model_{}.pth'.format(now)
 
     TRAINED_MODEL = True # 是否有预训练模型
-    trained_model_dir = r"IL_experience_model\\model_Sun_Jul_28_16_43_50_2024.pth" # 装载模仿学习预训练模型
+    trained_model_dir = r"IL_experience_model/model_Sun_Jul_28_16_43_50_2024.pth" # 装载模仿学习预训练模型
+    # trained_model_dir = r"Dagger_model/model_Wed_Jul_31_21_38_58_2024.pth" # 装载模仿学习预训练模型
 
     # 两种思路
     # 1. 将IL数据集作为初始数据集，不断往里面混入新数据-知乎伪代码展示
     # 2. 不要初始数据集，抓训练数据的时效性
     # 理论上，经过IL预训练模型。不需要分权融合专家和agent。已经相当于分权后期，执行动作全部采用agent，拟合expert真值
 
-    REPLAY_MEMORY_SIZE = 2000 # 经验回放池最大容量——足以容纳预训练/或不需要
-    MIN_REPLAY_MEMORY_SIZE = 100# 抽样训练开始时经验回放池的最小样本数
-    MINIBATCH_SIZE = 16 # 每次从经验回放池的采样数（作为训练的同一批次）   此大小影响运算速度/显存
-    EPISODES = 10000 # 游戏进行总次数
+    REPLAY_MEMORY_SIZE = 10000 # 经验回放池最大容量——足以容纳预训练/或不需要
+    MIN_REPLAY_MEMORY_SIZE = 500# 抽样训练开始时经验回放池的最小样本数
+    MINIBATCH_SIZE = 256 # 每次从经验回放池的采样数（作为训练的同一批次）   此大小影响运算速度/显存
+    EPISODES = 20000 # 游戏进行总次数
 
     # Create agent and environment
     env = CarEnv()    
