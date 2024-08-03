@@ -295,8 +295,8 @@ if __name__ == '__main__':
             os.makedirs('./Dagger_model')
         path='./Dagger_model/model_{}.pth'.format(now)
 
-    TRAINED_MODEL = True # 是否有预训练模型
-    trained_model_dir = r"IL_experience_model/model_Sun_Jul_28_16_43_50_2024.pth" # 装载模仿学习预训练模型
+    TRAINED_MODEL = False # 是否有预训练模型
+    trained_model_dir = r"Dagger_model/model_Fri_Aug__2_20_49_59_2024.pth" # 装载模仿学习预训练模型
     # trained_model_dir = r"Dagger_model/model_Wed_Jul_31_21_38_58_2024.pth" # 装载模仿学习预训练模型
 
     # 两种思路
@@ -316,7 +316,7 @@ if __name__ == '__main__':
     Original_settings = env.original_settings # 将原设置传出来保存
 
     # Start training thread and wait for training to be initialized
-    trainer_thread = Thread(target=agent.train_in_loop, daemon=True) #创建一个线程，调用的函数是train_in_loop
+    trainer_thread = Thread(target=agent.train_in_loop, daemon=True) #创建一个线程，调用的函数是train_in_loop，此处是daemon，理论上主线程结束了会立即结束所有支线程
     trainer_thread.start() #此处会直接往下走，同时线程分支（train_in_loop，训练一批）开始运行
 
     episode_num = 0 # 游戏进行的次数
