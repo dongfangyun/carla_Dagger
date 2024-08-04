@@ -295,8 +295,8 @@ if __name__ == '__main__':
             os.makedirs('./Dagger_model')
         path='./Dagger_model/model_{}.pth'.format(now)
 
-    TRAINED_MODEL = False # 是否有预训练模型
-    trained_model_dir = r"Dagger_model/model_Fri_Aug__2_20_49_59_2024.pth" # 装载模仿学习预训练模型
+    TRAINED_MODEL = True # 是否有预训练模型
+    trained_model_dir = r"Dagger_model/model_Sat_Aug__3_13_04_53_2024.pth" # 装载模仿学习预训练模型
     # trained_model_dir = r"Dagger_model/model_Wed_Jul_31_21_38_58_2024.pth" # 装载模仿学习预训练模型
 
     # 两种思路
@@ -323,7 +323,7 @@ if __name__ == '__main__':
 
     # Iterate over episodes
     for episode in tqdm(range(1, EPISODES + 1), ascii=True, unit='episodes'): # 1~100 EPISODE
-        env.collision_hist = [] # 记录碰撞发生的列表
+        # env.collision_hist = [] # 记录碰撞发生的列表
 
         # Reset environment and get initial state
         env.reset() #此处reset里会先tick()一下，往队列里传入初始图像

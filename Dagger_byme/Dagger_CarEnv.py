@@ -104,6 +104,7 @@ class CarEnv:
         self.agent.follow_speed_limits(True)
         self.destination = random.choice(self.world.get_map().get_spawn_points()).location
         self.agent.set_destination(self.destination)
+        # self.actor_list.append(self.agent) # 将控制器actor也加入销毁列表！ AttributeError: 'BasicAgent' object has no attribute 'destroy'
 
     def step(self, action, episode_steps): #action.shape([1,2]):  油门刹车action[0][0]:(-1,1) 方向盘action[0][1]:(-1,1)
 
