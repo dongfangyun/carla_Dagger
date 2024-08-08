@@ -1659,8 +1659,8 @@ def game_loop(args):
             # print(control_auto)
             # print(control_actual)
             # print(data, "\n")
-            # print("step:",world.step_tick, "reward",reward)
-            print(waypoint_nearby.lane_id)
+            print("step:",world.step_tick, "reward",reward)
+            # print(waypoint_nearby.lane_id)
 
 
 

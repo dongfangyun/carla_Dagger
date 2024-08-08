@@ -35,7 +35,7 @@ LOG = False # 训练时向tensorboard中写入记录
 
 EPISODES = 100 # 游戏进行总次数
 
-if LOG:
+if LOG: 
     writer = SummaryWriter("./logs_play_hd_DDPG")
 
 
