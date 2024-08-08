@@ -44,13 +44,13 @@ def truncate_events(logdir, truncated_logdir, max_step):
 
 
 # 输入和输出日志目录
-input_logdir = 'logs_change1'
+input_logdir = 'logs_change2'
 output_logdir = 'logs_change'
-dx = 35800  # 平移的距离
+dx = 22390  # 平移的距离
 max_step = 35850  # 将其更改为你想截断的 step
 
 # 执行截断操作
-truncate_events(input_logdir, output_logdir, max_step)
+# truncate_events(input_logdir, output_logdir, max_step)
 
 # # 执行平移操作
-# modify_events(input_logdir, output_logdir, dx)
+modify_events(input_logdir, output_logdir, dx)
