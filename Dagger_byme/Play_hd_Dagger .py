@@ -33,9 +33,6 @@ log_dir = r"Dagger_model/model_Fri_Aug__2_20_49_59_2024.pth" # with out pre
 SHOW_PREVIEW = False # 训练时播放摄像镜头
 LOG = False # 训练时向tensorboard中写入记录
 
-REPLAY_MEMORY_SIZE = 1000 # 经验回放池最大容量
-MIN_REPLAY_MEMORY_SIZE = 600# 抽样训练开始时经验回放池的最小样本数
-MINIBATCH_SIZE = 8 # 每次从经验回放池的采样数（作为训练的同一批次）   此大小影响运算速度/显存
 EPISODES = 100 # 游戏进行总次数
 
 if LOG:
@@ -203,7 +200,7 @@ def caculate_reward(dist_to_start, dist_to_start_old, kmh_player, done, inva_lan
     if done: #撞击
         reward += -10
     if inva_lane: #跨道
-        print("invasion lane") 
+        # print("invasion lane") 
         reward += -10
     if kmh_player < 1:
         reward += -1
@@ -224,6 +221,13 @@ if __name__ == '__main__':
     now = now.replace(" ","_").replace(":", "_")
 
     episode_num = 0 # 游戏进行的次数
+    total_done = 0
+    total_steps = 0
+    total_velocity = 0
+    max_velocity = 0
+    total_drive_dis = 0
+    total_inv = 0
+    
 
     all_average_reward = 0
     # Iterate over episodes
@@ -273,6 +277,7 @@ if __name__ == '__main__':
         episode_start = time.time()
         episode_num += 1
         episode_steps = 0
+        loc_old = env.location_start # 每episode初始车辆位置
 
         # Play for given number of seconds only
         while True:
@@ -302,10 +307,27 @@ if __name__ == '__main__':
 
             # reward, done, _ = env.step(action)
             done, data, act_expert, dis_to_start, inva_lane= env.step(action, episode_steps)
-            reward = caculate_reward(dis_to_start, dis_to_start, data[-7], done, inva_lane, action)
+
+            # data = [*location, *start_point, *destination, *forward_vector, velocity, *acceleration, *angular_velocity]
+            velocity = data[-7] # 算均速
+            total_velocity += velocity
+            if velocity > max_velocity:
+                max_velocity = velocity
+
+            if total_steps %4 == 0: # 算行程：每4帧（模拟运行1s）算一下距离
+                dis = env.location_player.distance(loc_old)
+                # print(dis) # dis/m
+                loc_old = env.location_player
+                total_drive_dis += dis
+
+            if inva_lane: # 算总跨道次数
+                total_inv += 1
+
+
+            reward = caculate_reward(dis_to_start, dis_to_start, velocity, done, inva_lane, action)
             data.append(reward)
             data = [data] # data预留batch_size维度 (, 20)
-            # print(data)
+
             data = torch.tensor(data).cuda().float()
 
             action = agent.get_action(current_state, data) # 训练的agent开车鉴赏
@@ -333,8 +355,9 @@ if __name__ == '__main__':
                                                 carla.Rotation(pitch=-90)))
             
             episode_steps += 1
+            total_steps += 1
 
-            print(episode_steps)
+            # print(episode_steps)
 
             if done:
                 break
@@ -348,7 +371,14 @@ if __name__ == '__main__':
         
         all_average_reward += episode_reward/episode_steps
 
-    print("all_average_reward", all_average_reward/EPISODES)
+    # print("all_average_reward", all_average_reward/EPISODES)
+    print("env.total_col_num", env.total_col_num)
+    print("average_episode_steps", total_steps/episode_num)
+    print("average_velocity", total_velocity/total_steps)
+    print("max_velocity", max_velocity)
+    print("total_drive_dis", total_drive_dis)
+    print("total_inv", total_inv)
+
 
     # Set termination flag for training thread and wait for it to finish
     agent.terminate = True

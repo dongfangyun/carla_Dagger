@@ -42,6 +42,8 @@ class CarEnv:
         settings.synchronous_mode = True
         self.world.apply_settings(settings)
 
+        self.total_col_num = 0
+
         
 
     def reset(self):
@@ -105,22 +107,23 @@ class CarEnv:
         self.destination = random.choice(self.world.get_map().get_spawn_points()).location
         self.agent.set_destination(self.destination)
         # self.actor_list.append(self.agent) # 将控制器actor也加入销毁列表！ AttributeError: 'BasicAgent' object has no attribute 'destroy'
+        self.location_player = self.location_start
 
     def step(self, action, episode_steps): #action.shape([1,2]):  油门刹车action[0][0]:(-1,1) 方向盘action[0][1]:(-1,1)
 
         # 车辆当前位置（x,y,z）和方向(三维矢量)
         transform_player = self.vehicle.get_transform()
         # print(transform_player)
-        location_player =transform_player.location
+        self.location_player =transform_player.location
         forward_vector_player =transform_player.get_forward_vector() 
 
-        location = (location_player.x,location_player.y, location_player.z)
+        location = (self.location_player.x,self.location_player.y, self.location_player.z)
         destination = (self.destination.x, self.destination.y , self.destination.z)
         forward_vector = (forward_vector_player.x, forward_vector_player.y, forward_vector_player.z)
 
         # 车辆初始点位置及距初始点距离
         location_start = self.location_start
-        dist_to_start = location_player.distance(location_start)
+        dist_to_start = self.location_player.distance(location_start)
         start_point = (location_start.x, location_start.y, location_start.z)
 
         # 车辆当前速度
@@ -144,7 +147,7 @@ class CarEnv:
 
         # 设置智能专家，会修正导航
         # 矫正专家，如果最近路点与局部路线规划下一个路点lane_id不符，重新规划路线, 目标点不变（不重新取点）。 得排除交叉路口，不然太善变
-        waypoint_nearby = self.world.get_map().get_waypoint(location_player, project_to_road=True, lane_type=(carla.LaneType.Driving | carla.LaneType.Sidewalk))
+        waypoint_nearby = self.world.get_map().get_waypoint(self.location_player, project_to_road=True, lane_type=(carla.LaneType.Driving | carla.LaneType.Sidewalk))
         if waypoint_nearby.is_junction:
             # print("juction!")
             pass
@@ -177,6 +180,7 @@ class CarEnv:
         # 发生碰撞时游戏结束
         if len(self.collision_hist) != 0:
             self.done = True
+            self.total_col_num += 1
             # print("1",self.done)
 
         # 每次游戏在现实中超过SECONDS_PER_EPISODE时常后结束
