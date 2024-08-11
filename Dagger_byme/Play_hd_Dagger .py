@@ -28,7 +28,9 @@ from Dagger_CarEnv import CarEnv, IM_WIDTH, IM_HEIGHT,camera_queue1, camera_queu
 
 
 # log_dir = r"Dagger_model/model_Sat_Aug__3_20_17_57_2024.pth" # IL_pre
-log_dir = r"Dagger_model/model_Sun_Aug__4_14_20_42_2024.pth" # with out pre
+# log_dir = r"Dagger_model/model_Sun_Aug__4_14_20_42_2024.pth" # with out 
+
+log_dir = r"Dagger_model/model_Sat_Aug_10_02_55_47_2024.pth"  
 
 SHOW_PREVIEW = False # 训练时播放摄像镜头
 LOG = False # 训练时向tensorboard中写入记录

@@ -244,7 +244,7 @@ class Dagger:
 
         loss_throttle = loss_fn_throttle(actions_agent[:, 0], actions_expert[:, 0])
         loss_steer = loss_fn_steer(actions_agent[:, 1], actions_expert[:, 1])
-        actor_loss = loss_throttle + 100 * loss_steer # 方向盘损失权重放大100倍
+        actor_loss = loss_throttle + 1 * loss_steer # 方向盘损失权重放大100倍
 
         # print(action, act_expert, loss_throttle, 100 * loss_steer) 
 
@@ -255,7 +255,7 @@ class Dagger:
         return actor_loss.item()
     
     def train_in_loop(self):
-        total_train_step = 0
+        total_train_step = 20338 # 在此续训练步数
         while True:
             if self.terminate: # 未完成游戏训练前，此处会一直支线程进行训练
                 return
@@ -269,6 +269,9 @@ class Dagger:
                 # print("loss:", actor_loss)
                 total_train_step += 1
                 print("total_train_step", total_train_step)
+
+                if total_train_step > 40200: # 超过20000步自动结束
+                    self.terminate = True
 
                 if LOG:
                     writer.add_scalar("actor_loss_{}".format(now), actor_loss, total_train_step)
@@ -295,9 +298,9 @@ if __name__ == '__main__':
             os.makedirs('./Dagger_model')
         path='./Dagger_model/model_{}.pth'.format(now)
 
-    TRAINED_MODEL = True # 是否有预训练模型
-    trained_model_dir = r"Dagger_model/model_Sat_Aug__3_13_04_53_2024.pth" # 装载模仿学习预训练模型
-    # trained_model_dir = r"Dagger_model/model_Wed_Jul_31_21_38_58_2024.pth" # 装载模仿学习预训练模型
+    TRAINED_MODEL =True# 是否有预训练模型
+    # trained_model_dir = r"Dagger_model/model_Fri_Aug__9_19_24_48_2024.pth" # 
+    trained_model_dir = r"Dagger_model/model_Sat_Aug_10_15_07_32_2024.pth" # 
 
     # 两种思路
     # 1. 将IL数据集作为初始数据集，不断往里面混入新数据-知乎伪代码展示
@@ -307,7 +310,7 @@ if __name__ == '__main__':
     REPLAY_MEMORY_SIZE = 10000 # 经验回放池最大容量——足以容纳预训练/或不需要
     MIN_REPLAY_MEMORY_SIZE = 500# 抽样训练开始时经验回放池的最小样本数
     MINIBATCH_SIZE = 256 # 每次从经验回放池的采样数（作为训练的同一批次）   此大小影响运算速度/显存
-    EPISODES = 20000 # 游戏进行总次数
+    EPISODES = 5000 # 游戏进行总次数
 
     # Create agent and environment
     env = CarEnv()    
