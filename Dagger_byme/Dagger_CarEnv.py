@@ -145,16 +145,16 @@ class CarEnv:
             self.agent.set_destination(self.destination)
             print("The target has been reached, searching for another target")
 
-        # 设置智能专家，会修正导航
-        # 矫正专家，如果最近路点与局部路线规划下一个路点lane_id不符，重新规划路线, 目标点不变（不重新取点）。 得排除交叉路口，不然太善变
-        waypoint_nearby = self.world.get_map().get_waypoint(self.location_player, project_to_road=True, lane_type=(carla.LaneType.Driving | carla.LaneType.Sidewalk))
-        if waypoint_nearby.is_junction:
-            # print("juction!")
-            pass
-        else:
-            if waypoint_nearby.lane_id != self.agent._local_planner._waypoints_queue[0][0].lane_id:
-                self.agent.set_destination(self.destination, start_location=True)
-                # print("计划有变")
+        # # 设置智能专家，会修正导航,在此开关智能专家
+        # # 矫正专家，如果最近路点与局部路线规划下一个路点lane_id不符，重新规划路线, 目标点不变（不重新取点）。 得排除交叉路口，不然太善变
+        # waypoint_nearby = self.world.get_map().get_waypoint(self.location_player, project_to_road=True, lane_type=(carla.LaneType.Driving | carla.LaneType.Sidewalk))
+        # if waypoint_nearby.is_junction:
+        #     # print("juction!")
+        #     pass
+        # else:
+        #     if waypoint_nearby.lane_id != self.agent._local_planner._waypoints_queue[0][0].lane_id:
+        #         self.agent.set_destination(self.destination, start_location=True)
+        #         # print("计划有变")
 
         
         # 根据当前这一步执行专家指示
@@ -183,7 +183,7 @@ class CarEnv:
             self.total_col_num += 1
             # print("1",self.done)
 
-        # 每次游戏在现实中超过SECONDS_PER_EPISODE时常后结束
+        # 每次游戏在现实中超过SECONDS_PER_EPISODE时常后结束,重置开关
         # print("episode_steps", episode_steps,"PER_EPISODE_max_steps", PER_EPISODE_max_steps)
         if episode_steps > PER_EPISODE_max_steps:
             self.done = True

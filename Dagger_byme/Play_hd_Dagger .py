@@ -28,9 +28,16 @@ from Dagger_CarEnv import CarEnv, IM_WIDTH, IM_HEIGHT,camera_queue1, camera_queu
 
 
 # log_dir = r"Dagger_model/model_Sat_Aug__3_20_17_57_2024.pth" # IL_pre
-# log_dir = r"Dagger_model/model_Sun_Aug__4_14_20_42_2024.pth" # with out 
+# log_dir = r"Dagger_model/model_Wed_Aug_14_13_34_06_2024.pth" # with out 
 
-log_dir = r"Dagger_model/model_Sat_Aug_10_02_55_47_2024.pth"  
+# log_dir = r"Dagger_model/model_Thu_Aug_15_13_42_58_2024.pth"  # 最强BC 
+# log_dir = r"Dagger_model/model_Tue_Aug_13_20_02_47_2024.pth"  # 最强Dagger*
+# log_dir = r"Dagger_model/model_Wed_Aug_14_13_34_06_2024.pth"  # 0.5混不衰
+# log_dir = r"Dagger_model/model_Thu_Aug_15_01_18_02_2024.pth"  # 0.5混衰
+# log_dir = r"Dagger_model/model_Tue_Aug_13_12_55_57_2024.pth"  # 半强Dagger*
+log_dir = r"Dagger_model/model_Sat_Aug_10_15_07_32_2024.pth"  # 半强Dagger*无pre
+
+sigma = 0.1 # 噪声
 
 SHOW_PREVIEW = False # 训练时播放摄像镜头
 LOG = False # 训练时向tensorboard中写入记录
@@ -333,6 +340,9 @@ if __name__ == '__main__':
             data = torch.tensor(data).cuda().float()
 
             action = agent.get_action(current_state, data) # 训练的agent开车鉴赏
+
+            action = action + torch.tensor(sigma * np.random.randn(2)).to(device) #self.action_dim = 2
+
             # action = act_expert  # 专家开车鉴赏模式
 
             # 分离损失函数，以便加权损失

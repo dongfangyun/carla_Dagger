@@ -255,7 +255,7 @@ class Dagger:
         return actor_loss.item()
     
     def train_in_loop(self):
-        total_train_step = 20338 # 在此续训练步数
+        total_train_step = 0 # 在此续训练步数
         while True:
             if self.terminate: # 未完成游戏训练前，此处会一直支线程进行训练
                 return
@@ -270,13 +270,13 @@ class Dagger:
                 total_train_step += 1
                 print("total_train_step", total_train_step)
 
-                if total_train_step > 40200: # 超过20000步自动结束
+                if total_train_step > 20100: # 超过20000步自动结束
                     self.terminate = True
 
                 if LOG:
                     writer.add_scalar("actor_loss_{}".format(now), actor_loss, total_train_step)
 
-                if total_train_step % 10000 == 0:
+                if total_train_step % 1000 == 0:
                     if SAVE:
                         state = {'model':agent.actor.state_dict(), 'optimizer':agent.actor_optimizer.state_dict(), 'epoch': episode}
                         torch.save(state, path)
@@ -298,9 +298,12 @@ if __name__ == '__main__':
             os.makedirs('./Dagger_model')
         path='./Dagger_model/model_{}.pth'.format(now)
 
-    TRAINED_MODEL =True# 是否有预训练模型
-    # trained_model_dir = r"Dagger_model/model_Fri_Aug__9_19_24_48_2024.pth" # 
-    trained_model_dir = r"Dagger_model/model_Sat_Aug_10_15_07_32_2024.pth" # 
+    TRAINED_MODEL =False# 是否有预训练模型
+    trained_model_dir = r"IL_experience_model/model_Sun_Jul_28_16_43_50_2024.pth" # 
+    # trained_model_dir = r"Dagger_model/model_Tue_Aug_13_12_55_57_2024.pth" # 
+
+    com_pi = True# 开启混合策略
+    beta = 0.9999 # 混合策略衰减系数
 
     # 两种思路
     # 1. 将IL数据集作为初始数据集，不断往里面混入新数据-知乎伪代码展示
@@ -373,7 +376,21 @@ if __name__ == '__main__':
             data = torch.tensor(data).cuda().float()
             # data = [*location, *start_point, *destination, *forward_vector, velocity, *acceleration, *angular_velocity, reward]
 
-            action = agent.get_action(current_state, data)
+            # if com_pi: # 以0.5的概率随机选取动作
+            #     action_a = agent.get_action(current_state, data)
+            #     action_e = act_expert
+            #     ran_num = random.random()
+            #     ran_num = ran_num * beta
+            #     beta = beta * 0.9999 # 混合策略衰减系数
+
+            #     if ran_num >= 0.5:
+            #         action = action_e
+            #     else:
+            #         action = action_a
+            # else:
+            #     action = agent.get_action(current_state, data)
+
+            action = act_expert # BC
 
             # 分离损失函数，以便加权损失
             loss_fn_throttle = nn.L1Loss(reduction='mean')

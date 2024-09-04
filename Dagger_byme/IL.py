@@ -13,7 +13,7 @@ import matplotlib.image as mpimg
 import time
 import os
 
-load_dict = np.load('./1万全属性step300fps4//record_dic.npy', allow_pickle=True).item()
+load_dict = np.load('./1w_300step_4fps_attributes/record_dic.npy', allow_pickle=True).item()
 
 partion_line = len(load_dict)//4 * 3
 
@@ -36,8 +36,8 @@ def get_states_actions(data_index ,batch_size): # 此函数current_state是对�
     attributes = []
 
     for i in minibatch:
-        camera1_img = mpimg.imread('./1万全属性step300fps4//camera1//{}.jpg'.format(i))
-        camera2_img = mpimg.imread('./1万全属性step300fps4//camera2//{}.jpg'.format(i))
+        camera1_img = mpimg.imread('./1w_300step_4fps_attributes/camera1//{}.jpg'.format(i))
+        camera2_img = mpimg.imread('./1w_300step_4fps_attributes/camera2//{}.jpg'.format(i))
         img = np.concatenate((camera1_img, camera2_img), axis=2) # 将影像叠置拼接
         imgs.append(img)
 
@@ -370,15 +370,15 @@ loss_fn_steer = nn.L1Loss(reduction='mean')
 loss_fn_throttle = loss_fn_throttle.cuda()
 loss_fn_steer = loss_fn_steer.cuda()
 
-optimizer = torch.optim.Adam(agent.parameters(), lr=5e-5)
+optimizer = torch.optim.Adam(agent.parameters(), lr=1e-4)
 writer = SummaryWriter("./logs_IL_traning") 
 
 total_train_step = 0
 total_test_step = 0
-epoch = 600
-batch_size = 64
+epoch = 1000
+batch_size = 128
 
-weight_loss_steer = 100
+weight_loss_steer = 1
 
 for i in range(epoch):
     agent.train() # 开启训练模式
