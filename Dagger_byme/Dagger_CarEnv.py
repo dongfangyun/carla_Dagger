@@ -156,7 +156,16 @@ class CarEnv:
         #         self.agent.set_destination(self.destination, start_location=True)
         #         # print("计划有变")
 
-        
+        # # 设置偏航重置
+        # waypoint_nearby = self.world.get_map().get_waypoint(self.location_player, project_to_road=True, lane_type=(carla.LaneType.Driving | carla.LaneType.Sidewalk))
+        # if waypoint_nearby.is_junction:
+        #     # print("juction!")
+        #     pass
+        # else:
+        #     if waypoint_nearby.lane_id != self.agent._local_planner._waypoints_queue[0][0].lane_id:
+        #         self.done = True
+        #         # print("计划有变")
+
         # 根据当前这一步执行专家指示
         self.act_expert = self.agent.run_step() # 专家指导动作 ，这里的指导动作已然有大病 （已修正）
         self.act_expert.manual_gear_shift = False

@@ -377,11 +377,21 @@ if __name__ == '__main__':
             action_e = act_expert
 
             waypoint_nearby = env.world.get_map().get_waypoint(env.location_player, project_to_road=True, lane_type=(carla.LaneType.Driving | carla.LaneType.Sidewalk))
+            # print(len(env.agent._local_planner._waypoints_queue))
 
-            if waypoint_nearby.lane_id != env.agent._local_planner._waypoints_queue[0][0].lane_id:
-                action = action_e
-            else:
+            if env.agent.done():  # Check whether the agent has reached its destination
+                env.destination = random.choice(env.world.get_map().get_spawn_points()).location
+                env.agent.set_destination(env.destination)
+                # print("The target has been reached, searching for another target")
+
+            if waypoint_nearby.is_junction:
+                # print("juction!")
                 action = action_a
+            else:
+                if waypoint_nearby.lane_id != env.agent._local_planner._waypoints_queue[0][0].lane_id:
+                    action = action_e
+                else:
+                    action = action_a
 
             # 分离损失函数，以便加权损失
             loss_fn_throttle = nn.L1Loss(reduction='mean')

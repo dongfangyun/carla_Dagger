@@ -274,7 +274,7 @@ class Dagger:
                     self.terminate = True
 
                 if LOG:
-                    writer.add_scalar("actor_loss_{}".format(now), actor_loss, total_train_step)
+                    writer.add_scalar("loss", actor_loss, total_train_step)
 
                 if total_train_step % 1000 == 0:
                     if SAVE:
@@ -289,14 +289,18 @@ if __name__ == '__main__':
     SHOW_PREVIEW = False # 训练时播放摄像镜头
 
     LOG = True # 训练时向tensorboard中写入记录
-    if LOG:
-        writer = SummaryWriter("./logs_Dagger")
 
     SAVE = True # 保存模型
+
     if SAVE:
         if not os.path.isdir('./Dagger_model'):
             os.makedirs('./Dagger_model')
         path='./Dagger_model/model_{}.pth'.format(now)
+
+    if LOG:
+        if not os.path.isdir('./logs/{}'.format(now)):
+            os.makedirs('./logs/{}'.format(now))
+        writer = SummaryWriter('./logs/{}'.format(now))
 
     TRAINED_MODEL =False# 是否有预训练模型
     trained_model_dir = r"IL_experience_model/model_Sun_Jul_28_16_43_50_2024.pth" # 
